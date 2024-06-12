@@ -5,7 +5,7 @@ DECLARE io_contador Number := 0;
 DECLARE numLin Number := 0;
 DECLARE numLineasFichero Number := 0;
 DECLARE i_Tenant VARCHAR(127);
-DECLARE cVersion CONSTANT VARCHAR(2) := '09';
+DECLARE cVersion CONSTANT VARCHAR(2) := '10';
 
 DECLARE cReportTable CONSTANT VARCHAR(50) := 'SP_MOVIMIENTOS_HIST';
 DECLARE cRegExpFecha CONSTANT VARCHAR(10) := '([0-9]+)';
@@ -22,6 +22,7 @@ AND TO_DATE(SUBSTR_AFTER(TABLE_NAME, '%CARTERA_BKP'), 'YYYYMMDD') < ADD_MONTHS(C
 -- Versiones --------------------------------------------------------------------------------------------------------
 -- v08 - cambio fecha_ini y fecha_fin para insertarse la fecha de vencimiento cuando fecha_ini > fecha_vencimiento.
 -- v09 - Se ha añadido la creación del backup de cartera y la eliminación de los backups anteriores a 3 meses
+-- v10 - Para los ficheros de tipo MVCAR se realiza la llamada al procedimiento SP_CARGAR_POLIZAS_TRASPASO. Se comenta la llamada SP_DETERMINAR_CIC
 ---------------------------------------------------------------------------------------------------------------------
 
 DECLARE EXIT HANDLER FOR SQLEXCEPTION BEGIN CALL LIB_GLOBAL_CESCE :w_debug (
@@ -107,9 +108,9 @@ IF IN_FILENAME LIKE '%MVCAR%' THEN
         io_contador
         );
 
-INSERT INTO EXT.EXT_MOVIMIENTO_CARTERA_CREDITO_HIST
-VALUES
-(
+        INSERT INTO EXT.EXT_MOVIMIENTO_CARTERA_CREDITO_HIST
+        VALUES
+        (
         i.IDMODALIDAD,
         i.NUM_POLIZA,
         i.IDFASE,
@@ -886,6 +887,7 @@ VALUES
 */
 
     CALL EXT.SP_SET_MOVIMIENTOS_ENVIADO('mvcar', IN_FILENAME);
+    CALL EXT.SP_CARGAR_POLIZAS_TRASPASO();
 
 ---------------------------------------------------------
 -- MOVIMIENTOS FIANZAS - CAUCION
@@ -1266,8 +1268,8 @@ SET
 
 END IF;
 
-    
-    CALL EXT.SP_DETERMINAR_CIC();
+-- v10. Se comenta la llamada (no se usa)
+--CALL EXT.SP_DETERMINAR_CIC();
 
 
 CALL LIB_GLOBAL_CESCE :w_debug (
