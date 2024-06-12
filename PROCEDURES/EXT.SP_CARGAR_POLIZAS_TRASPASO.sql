@@ -1,6 +1,11 @@
 CREATE OR REPLACE PROCEDURE EXT.SP_CARGAR_POLIZAS_TRASPASO
 LANGUAGE SQLSCRIPT 	SQL SECURITY DEFINER	DEFAULT SCHEMA EXT AS
 BEGIN
+
+-- Versiones --------------------------------------------------------------------------------------------------------
+-- v01 - versión inicial
+---------------------------------------------------------------------------------------------------------------------
+
 	--Declaración de variables
 	DECLARE i_Tenant VARCHAR(4);
 	DECLARE vProcedure VARCHAR(127) = 'SP_CARGAR_POLIZAS_TRASPASO';
