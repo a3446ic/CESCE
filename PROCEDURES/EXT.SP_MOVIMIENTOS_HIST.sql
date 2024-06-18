@@ -19,7 +19,7 @@ WHERE SCHEMA_NAME='EXT'
 AND TABLE_NAME LIKE 'CARTERA_BKP'  || TO_VARCHAR(ADD_MONTHS(CURRENT_DATE,-3), 'YYYYMM') || '%'
 AND TO_DATE(SUBSTR_AFTER(TABLE_NAME, '%CARTERA_BKP'), 'YYYYMMDD') < ADD_MONTHS(CURRENT_DATE, -3);
 
-DECLARE i_rev Number;
+DECLARE i_rev Number; -- Número de ejecución
 
 
 -- Versiones --------------------------------------------------------------------------------------------------------
@@ -31,8 +31,8 @@ DECLARE i_rev Number;
 
 DECLARE EXIT HANDLER FOR SQLEXCEPTION 
 BEGIN 
-    --Actualizamos registro status = FAILED
-    select i_rev from dummy;
+	
+    --Actualizamos registro status = FAILED    
     UPDATE EXT.REGISTRO_INTERFACES SET NUMREC = numLineasFichero, STATUS = 'FAILED', ENDTIME = current_timestamp, ERROR = LEFT(IFNULL( ::SQL_ERROR_MESSAGE, ''),1000) WHERE BATCHNAME = IN_FILENAME AND REV = i_rev;
 	
 	CALL LIB_GLOBAL_CESCE :w_debug (
@@ -41,7 +41,7 @@ BEGIN
     	'SP_MOVIMIENTOS_HIST',
     	io_contador
 	);
-	RESIGNAL;
+    RESIGNAL;
 
 END;
 
@@ -88,13 +88,15 @@ END FOR;
 CLOSE tablasBorrar;
 ---------------------------------------------------------------------------------------------------------------------
 
+---------------------------------------------------------
 --Insertamos un registro en la tabla REGISTRO_INTERFACES
 --Al finalizar el proceso actualizar el registro
-SELECT COALESCE(MAX(REV),0) + 1 INTO i_rev FROM REGISTRO_INTERFACES WHERE BATCHNAME = IN_FILENAME;
+SELECT IFNULL(MAX(REV),0) + 1 INTO i_rev FROM REGISTRO_INTERFACES WHERE BATCHNAME = IN_FILENAME;
 
 INSERT INTO REGISTRO_INTERFACES(BATCHNAME,REV,NUMREC,STARTTIME)
 VALUES(IN_FILENAME, i_rev, 0,current_timestamp);
 
+---------------------------------------------------------
 
 IF IN_FILENAME LIKE '%MVCAR%' THEN 
 
@@ -1291,8 +1293,6 @@ END IF;
 --CALL EXT.SP_DETERMINAR_CIC();
 
 
---Actualizamos registro status = SUCCESS
-UPDATE EXT.REGISTRO_INTERFACES SET NUMREC = numLineasFichero, STATUS = 'SUCCESS', ENDTIME = current_timestamp WHERE BATCHNAME = IN_FILENAME AND REV = :i_rev;
 
 CALL LIB_GLOBAL_CESCE :w_debug (
     i_Tenant,
@@ -1300,6 +1300,9 @@ CALL LIB_GLOBAL_CESCE :w_debug (
     'SP_MOVIMIENTOS_HIST',
     io_contador
 );
+
+--Actualizamos registro status = SUCCESS
+UPDATE EXT.REGISTRO_INTERFACES SET NUMREC = numLineasFichero, STATUS = 'SUCCESS', ENDTIME = current_timestamp WHERE BATCHNAME = IN_FILENAME AND REV = i_rev;
 
 COMMIT;
 
