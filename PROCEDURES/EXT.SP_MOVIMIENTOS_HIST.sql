@@ -20,8 +20,7 @@ AND TABLE_NAME LIKE 'CARTERA_BKP'  || TO_VARCHAR(ADD_MONTHS(CURRENT_DATE,-3), 'Y
 AND TO_DATE(SUBSTR_AFTER(TABLE_NAME, '%CARTERA_BKP'), 'YYYYMMDD') < ADD_MONTHS(CURRENT_DATE, -3);
 
 DECLARE i_rev Number;
-DECLARE divisor INTEGER := 0;
-DECLARE resultado INTEGER;
+
 
 -- Versiones --------------------------------------------------------------------------------------------------------
 -- v08 - cambio fecha_ini y fecha_fin para insertarse la fecha de vencimiento cuando fecha_ini > fecha_vencimiento.
@@ -96,11 +95,6 @@ SELECT COALESCE(MAX(REV),0) + 1 INTO i_rev FROM REGISTRO_INTERFACES WHERE BATCHN
 INSERT INTO REGISTRO_INTERFACES(BATCHNAME,REV,NUMREC,STARTTIME)
 VALUES(IN_FILENAME, i_rev, 0,current_timestamp);
 
-
-
-
--- Intentar dividir un número entre cero
-resultado := 10 / divisor;
 
 IF IN_FILENAME LIKE '%MVCAR%' THEN 
 
