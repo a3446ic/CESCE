@@ -1,4 +1,4 @@
-CREATE PROCEDURE "EXT"."SP_MOVIMIENTOS_HIST" (IN IN_FILENAME Varchar(120)) LANGUAGE SQLSCRIPT 
+ALTER PROCEDURE "EXT"."SP_MOVIMIENTOS_HIST" (IN IN_FILENAME Varchar(120)) LANGUAGE SQLSCRIPT 
 SQL SECURITY DEFINER DEFAULT SCHEMA "EXT" AS BEGIN 
 
 DECLARE io_contador Number := 0;
@@ -19,19 +19,31 @@ WHERE SCHEMA_NAME='EXT'
 AND TABLE_NAME LIKE 'CARTERA_BKP'  || TO_VARCHAR(ADD_MONTHS(CURRENT_DATE,-3), 'YYYYMM') || '%'
 AND TO_DATE(SUBSTR_AFTER(TABLE_NAME, '%CARTERA_BKP'), 'YYYYMMDD') < ADD_MONTHS(CURRENT_DATE, -3);
 
+DECLARE i_rev Number;
+DECLARE divisor INTEGER := 0;
+DECLARE resultado INTEGER;
+
 -- Versiones --------------------------------------------------------------------------------------------------------
 -- v08 - cambio fecha_ini y fecha_fin para insertarse la fecha de vencimiento cuando fecha_ini > fecha_vencimiento.
 -- v09 - Se ha añadido la creación del backup de cartera y la eliminación de los backups anteriores a 3 meses
 -- v10 - Para los ficheros de tipo MVCAR se realiza la llamada al procedimiento SP_CARGAR_POLIZAS_TRASPASO. Se comenta la llamada SP_DETERMINAR_CIC
+-- v11 - Insertar registro en REGISTROS_INTERFACES. Actualizar estado SUCCESS/FAILED según el resultado de la carga
 ---------------------------------------------------------------------------------------------------------------------
 
-DECLARE EXIT HANDLER FOR SQLEXCEPTION BEGIN CALL LIB_GLOBAL_CESCE :w_debug (
-    i_Tenant,
-    cReportTable || '. SQL ERROR_MESSAGE: ' || IFNULL( ::SQL_ERROR_MESSAGE, '') || '. SQL_ERROR_CODE: ' ||  ::SQL_ERROR_CODE,
-    'SP_MOVIMIENTOS_HIST',
-    io_contador
-);
-		RESIGNAL;
+DECLARE EXIT HANDLER FOR SQLEXCEPTION 
+BEGIN 
+    --Actualizamos registro status = FAILED
+    select i_rev from dummy;
+    UPDATE EXT.REGISTRO_INTERFACES SET NUMREC = numLineasFichero, STATUS = 'FAILED', ENDTIME = current_timestamp, ERROR = LEFT(IFNULL( ::SQL_ERROR_MESSAGE, ''),1000) WHERE BATCHNAME = IN_FILENAME AND REV = i_rev;
+	
+	CALL LIB_GLOBAL_CESCE :w_debug (
+    	i_Tenant,
+    	cReportTable || '. SQL ERROR_MESSAGE: ' || IFNULL( ::SQL_ERROR_MESSAGE, '') || '. SQL_ERROR_CODE: ' ||  ::SQL_ERROR_CODE,
+    	'SP_MOVIMIENTOS_HIST',
+    	io_contador
+	);
+	RESIGNAL;
+
 END;
 
 SELECT TENANTID INTO i_Tenant
@@ -76,6 +88,19 @@ FOR tabla AS tablasBorrar DO
 END FOR;
 CLOSE tablasBorrar;
 ---------------------------------------------------------------------------------------------------------------------
+
+--Insertamos un registro en la tabla REGISTRO_INTERFACES
+--Al finalizar el proceso actualizar el registro
+SELECT COALESCE(MAX(REV),0) + 1 INTO i_rev FROM REGISTRO_INTERFACES WHERE BATCHNAME = IN_FILENAME;
+
+INSERT INTO REGISTRO_INTERFACES(BATCHNAME,REV,NUMREC,STARTTIME)
+VALUES(IN_FILENAME, i_rev, 0,current_timestamp);
+
+
+
+
+-- Intentar dividir un número entre cero
+resultado := 10 / divisor;
 
 IF IN_FILENAME LIKE '%MVCAR%' THEN 
 
@@ -1271,6 +1296,9 @@ END IF;
 -- v10. Se comenta la llamada (no se usa)
 --CALL EXT.SP_DETERMINAR_CIC();
 
+
+--Actualizamos registro status = SUCCESS
+UPDATE EXT.REGISTRO_INTERFACES SET NUMREC = numLineasFichero, STATUS = 'SUCCESS', ENDTIME = current_timestamp WHERE BATCHNAME = IN_FILENAME AND REV = :i_rev;
 
 CALL LIB_GLOBAL_CESCE :w_debug (
     i_Tenant,
