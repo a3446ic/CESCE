@@ -37,15 +37,7 @@ CALL LIB_GLOBAL_CESCE :w_debug(
     io_contador
 );
 
----------------------------------------------------------
---Insertamos un registro en la tabla REGISTRO_INTERFACES
---Al finalizar el proceso actualizar el registro
-SELECT IFNULL(MAX(REV),0) + 1 INTO i_rev FROM REGISTRO_INTERFACES WHERE BATCHNAME = IN_FILENAME;
 
-INSERT INTO REGISTRO_INTERFACES(BATCHNAME,REV,NUMREC,STARTTIME)
-VALUES(IN_FILENAME, i_rev, 0,current_timestamp);
-select 10/0 from dummy;
----------------------------------------------------------
 
 -- En caso de reprocesamiento, se eliminan los registros que tienen como batchname el nombre del archivo reprocesado
 DELETE FROM CS_STAGESALESTRANSACTION WHERE BATCHNAME = IN_FILENAME;
@@ -58,8 +50,19 @@ SELECT
 FROM
     EXT.COMISIONES_RM_LOAD;
 
+---------------------------------------------------------
+--Insertamos un registro en la tabla REGISTRO_INTERFACES
+--Al finalizar el proceso actualizar el registro
+SELECT IFNULL(MAX(REV),0) + 1 INTO i_rev FROM REGISTRO_INTERFACES WHERE BATCHNAME = IN_FILENAME;
+
+INSERT INTO REGISTRO_INTERFACES(BATCHNAME,REV,NUMREC,STARTTIME)
+VALUES(IN_FILENAME, i_rev, 0,current_timestamp);
 SELECT count(*) into numLineasFichero
 FROM (select distinct * FROM EXT.COMISIONES_RM_LOAD) ;
+
+
+---------------------------------------------------------    
+
 
 OPEN comrm;
 FOR i AS comrm DO 
