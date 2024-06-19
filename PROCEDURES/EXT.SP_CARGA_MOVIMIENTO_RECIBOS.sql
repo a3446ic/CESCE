@@ -10,10 +10,10 @@ BEGIN
 	DECLARE id_estado_recibo BIGINT;
 	DECLARE cod_operacion_emitido VARCHAR(20);
 	DECLARE cod_riesgo_emitido INTEGER;
-	DECLARE cVersion CONSTANT VARCHAR(2) := '11';
+	DECLARE cVersion CONSTANT VARCHAR(2) := '13';
 	declare codProceso varchar(14);
-        DECLARE i_rev Number; -- Número de ejecución
-        DECLARE numLineasFichero Number;
+    DECLARE i_rev Number := 0; -- Número de ejecución
+    DECLARE numLineasFichero Number := 0;
 
 -- VERSIONES
 --v01 - Se modifica la variable id_estado_recibo de SMALLINT a BIGINT por error al almacenar numeros grandes
@@ -103,6 +103,7 @@ DECLARE EXIT HANDLER FOR SQLEXCEPTION
 
         SELECT count(*) into numLineasFichero
         FROM (select distinct * FROM EXT.EXT_MOVIMIENTO_RECIBOS_LOAD) ;
+
 
         ---------------------------------------------------------
 	

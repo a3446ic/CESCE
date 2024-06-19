@@ -1,11 +1,11 @@
-ALTER PROCEDURE "EXT"."SP_MOVIMIENTOS_HIST" (IN IN_FILENAME Varchar(120)) LANGUAGE SQLSCRIPT 
+CREATE OR REPLACE PROCEDURE "EXT"."SP_MOVIMIENTOS_HIST" (IN IN_FILENAME Varchar(120)) LANGUAGE SQLSCRIPT 
 SQL SECURITY DEFINER DEFAULT SCHEMA "EXT" AS BEGIN 
 
 DECLARE io_contador Number := 0;
 DECLARE numLin Number := 0;
 DECLARE numLineasFichero Number := 0;
 DECLARE i_Tenant VARCHAR(127);
-DECLARE cVersion CONSTANT VARCHAR(2) := '10';
+DECLARE cVersion CONSTANT VARCHAR(2) := '11';
 
 DECLARE cReportTable CONSTANT VARCHAR(50) := 'SP_MOVIMIENTOS_HIST';
 DECLARE cRegExpFecha CONSTANT VARCHAR(10) := '([0-9]+)';
@@ -19,7 +19,7 @@ WHERE SCHEMA_NAME='EXT'
 AND TABLE_NAME LIKE 'CARTERA_BKP'  || TO_VARCHAR(ADD_MONTHS(CURRENT_DATE,-3), 'YYYYMM') || '%'
 AND TO_DATE(SUBSTR_AFTER(TABLE_NAME, '%CARTERA_BKP'), 'YYYYMMDD') < ADD_MONTHS(CURRENT_DATE, -3);
 
-DECLARE i_rev Number; -- Número de ejecución
+DECLARE i_rev Number := 0; -- Número de ejecución
 
 
 -- Versiones --------------------------------------------------------------------------------------------------------
