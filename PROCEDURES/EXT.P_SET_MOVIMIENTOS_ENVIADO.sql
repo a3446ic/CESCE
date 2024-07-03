@@ -1,4 +1,4 @@
-CREATE PROCEDURE "EXT"."SP_SET_MOVIMIENTOS_ENVIADO" (IN tipoMov VARCHAR(5), IN IN_FILENAME VARCHAR(120)) LANGUAGE SQLSCRIPT SQL SECURITY DEFINER DEFAULT SCHEMA "EXT" AS
+CREATE OR REPLACE PROCEDURE "EXT"."SP_SET_MOVIMIENTOS_ENVIADO" (IN tipoMov VARCHAR(5), IN IN_FILENAME VARCHAR(120)) LANGUAGE SQLSCRIPT SQL SECURITY DEFINER DEFAULT SCHEMA "EXT" AS
 BEGIN
 
 	----------------------------- Versiones ---------------------------------
@@ -10,9 +10,10 @@ BEGIN
 	-- v11: Se añaden los nombre de campos de EXT_MOVIMIENTO_CARTERA_CREDITO_HIST para pbtener el COD_MEDIADOR y SUBCLAVE formateado a 4 digitos
 	-- v12: Modificado el comportamiento cuando se reciben movimientos de tipo 2 para que contemple los casos en que una póliza es intermediada por múltiples mediadores.
 	-- v13: Cambios en movimientos tipo 2 para que tenga en cuenta múltiples mediadores en una misma póliza
+	-- v14: Si hay múltiples mediadores de traspaso se actualiza el registro con el nuevo mediador 
 	-------------------------------------------------------------------------
 
-	DECLARE cVersion CONSTANT VARCHAR(2) := '13';
+	DECLARE cVersion CONSTANT VARCHAR(2) := '14';
 	DECLARE i_Tenant VARCHAR2(127);
 	DECLARE vProcedure VARCHAR2(127);
 	DECLARE io_contador  INTEGER := 0;
@@ -157,46 +158,80 @@ BEGIN
                     AND IDPRODUCT = (SELECT EXT.LIB_GLOBAL_CESCE:getProductId((select lpad(i.IDMODALIDAD, 3, '0') from dummy), '0', (CASE WHEN (i.IDPAIS > 0 AND i.IDPAIS <= 52) THEN 116 ELSE i.IDPAIS END), i.NUM_POLIZA).productId FROM DUMMY);
 
 					IF registroExistente >= 1 THEN --UPDATE
-						        
-						UPDATE EXT.CARTERA SET
-							NUM_ANUALIDAD = i.NUM_ANUALIDAD,
-							FECHA_EMISION = i.FECHA_EMISION,
-							FECHA_EFECTO = i.FECHA_EFECTO,
-							FECHA_VENCIMIENTO = i.FECHA_VENCIMIENTO,
-							IDPAIS = (CASE WHEN (i.IDPAIS > 0 AND i.IDPAIS <= 52) THEN 116 ELSE i.IDPAIS END),
-							PRIMA_PROVISIONAL_INT = i.PRIMA_PROVISIONAL_INT,
-							PRIMA_PROVISIONAL_EXT = i.PRIMA_PROVISIONAL_EXT,
-							IDDIVISA_INT = i.IDDIVISA_MERCADO_INT,
-							IDDIVISA_EXT = i.IDDIVISA_MERCADO_EXT,
-							PRIMA_MIN_INT = i.PRIMA_MIN_MERCADO_INT,
-							PRIMA_MIN_EXT = i.PRIMA_MIN_MERCADO_EXT,
-							COD_MEDIADOR = codigoMediador,
-							COD_SUBCLAVE = subclaveMediador,
-							P_INTERMEDIACION = 100 * i.PORC_INTERMEDIACION,
-							--FECHA_INICIO = i.FECHA_INI,
-							FECHA_INICIO = fechaInicio,
-							FECHA_FIN = fechaFin,
-							NIF_TOMADOR = i.IDFISCAL_TOMADOR,
-							NOMBRE_TOMADOR = '',  -- NO VIENE EN EL FICHERO
-							--i.NOMBRE_TOMADOR,
-							MEDIADOR_PRINCIPAL_CIC = 1,
-							ACTIVO = 1,
-							MODIF_DATE = CURRENT_TIMESTAMP,
-							MODIF_USER = 'CDL',
-							MODIF_SOURCE = IN_FILENAME
-						WHERE NUM_POLIZA = i.NUM_POLIZA 
-						AND COD_MEDIADOR = i.IDMEDIADOR 
-						AND COD_SUBCLAVE = i.IDSUBCLAVE 
-						AND FECHA_INICIO = i.FECHA_INI
-						AND FECHA_EFECTO = i.FECHA_EFECTO
-						AND NUM_ANUALIDAD = i.NUM_ANUALIDAD
-						--AND FECHA_VENCIMIENTO = i.FECHA_VENCIMIENTO 
-						AND IDPRODUCT = (SELECT EXT.LIB_GLOBAL_CESCE :getProductId( (select lpad(i.IDMODALIDAD, 3, '0') from dummy), '0', (CASE WHEN (i.IDPAIS > 0 AND i.IDPAIS <= 52) THEN 116 ELSE i.IDPAIS END), i.NUM_POLIZA).productId FROM DUMMY);
+						-- v14
+						IF mediadoresTraspaso > 0 THEN	        
+							UPDATE EXT.CARTERA SET
+								NUM_ANUALIDAD = i.NUM_ANUALIDAD,
+								FECHA_EMISION = i.FECHA_EMISION,
+								FECHA_EFECTO = i.FECHA_EFECTO,
+								FECHA_VENCIMIENTO = i.FECHA_VENCIMIENTO,
+								IDPAIS = (CASE WHEN (i.IDPAIS > 0 AND i.IDPAIS <= 52) THEN 116 ELSE i.IDPAIS END),
+								PRIMA_PROVISIONAL_INT = i.PRIMA_PROVISIONAL_INT,
+								PRIMA_PROVISIONAL_EXT = i.PRIMA_PROVISIONAL_EXT,
+								IDDIVISA_INT = i.IDDIVISA_MERCADO_INT,
+								IDDIVISA_EXT = i.IDDIVISA_MERCADO_EXT,
+								PRIMA_MIN_INT = i.PRIMA_MIN_MERCADO_INT,
+								PRIMA_MIN_EXT = i.PRIMA_MIN_MERCADO_EXT,
+								COD_MEDIADOR = codigoMediador,
+								COD_SUBCLAVE = subclaveMediador,
+								P_INTERMEDIACION = 100 * i.PORC_INTERMEDIACION,
+								--FECHA_INICIO = i.FECHA_INI,
+								FECHA_INICIO = fechaInicio,
+								FECHA_FIN = fechaFin,
+								NIF_TOMADOR = i.IDFISCAL_TOMADOR,
+								NOMBRE_TOMADOR = '',  -- NO VIENE EN EL FICHERO
+								--i.NOMBRE_TOMADOR,
+								MEDIADOR_PRINCIPAL_CIC = 1,
+								ACTIVO = 1,
+								MODIF_DATE = CURRENT_TIMESTAMP,
+								MODIF_USER = 'CDL',
+								MODIF_SOURCE = IN_FILENAME
+							WHERE NUM_POLIZA = i.NUM_POLIZA 
+		                    AND COD_MEDIADOR = codigoMediador
+		                    AND COD_SUBCLAVE = subclaveMediador
+		                    AND NUM_ANUALIDAD = CASE WHEN ACTIVO = 2 THEN anualidad ELSE i.NUM_ANUALIDAD END
+		                    AND IDPRODUCT = (SELECT EXT.LIB_GLOBAL_CESCE:getProductId((select lpad(i.IDMODALIDAD, 3, '0') from dummy), '0', (CASE WHEN (i.IDPAIS > 0 AND i.IDPAIS <= 52) THEN 116 ELSE i.IDPAIS END), i.NUM_POLIZA).productId FROM DUMMY);
 
+						ELSE
+							UPDATE EXT.CARTERA SET
+								NUM_ANUALIDAD = i.NUM_ANUALIDAD,
+								FECHA_EMISION = i.FECHA_EMISION,
+								FECHA_EFECTO = i.FECHA_EFECTO,
+								FECHA_VENCIMIENTO = i.FECHA_VENCIMIENTO,
+								IDPAIS = (CASE WHEN (i.IDPAIS > 0 AND i.IDPAIS <= 52) THEN 116 ELSE i.IDPAIS END),
+								PRIMA_PROVISIONAL_INT = i.PRIMA_PROVISIONAL_INT,
+								PRIMA_PROVISIONAL_EXT = i.PRIMA_PROVISIONAL_EXT,
+								IDDIVISA_INT = i.IDDIVISA_MERCADO_INT,
+								IDDIVISA_EXT = i.IDDIVISA_MERCADO_EXT,
+								PRIMA_MIN_INT = i.PRIMA_MIN_MERCADO_INT,
+								PRIMA_MIN_EXT = i.PRIMA_MIN_MERCADO_EXT,
+								COD_MEDIADOR = codigoMediador,
+								COD_SUBCLAVE = subclaveMediador,
+								P_INTERMEDIACION = 100 * i.PORC_INTERMEDIACION,
+								--FECHA_INICIO = i.FECHA_INI,
+								FECHA_INICIO = fechaInicio,
+								FECHA_FIN = fechaFin,
+								NIF_TOMADOR = i.IDFISCAL_TOMADOR,
+								NOMBRE_TOMADOR = '',  -- NO VIENE EN EL FICHERO
+								--i.NOMBRE_TOMADOR,
+								MEDIADOR_PRINCIPAL_CIC = 1,
+								ACTIVO = 1,
+								MODIF_DATE = CURRENT_TIMESTAMP,
+								MODIF_USER = 'CDL',
+								MODIF_SOURCE = IN_FILENAME
+							WHERE NUM_POLIZA = i.NUM_POLIZA 
+							AND COD_MEDIADOR = i.IDMEDIADOR 
+							AND COD_SUBCLAVE = i.IDSUBCLAVE 
+							AND FECHA_INICIO = i.FECHA_INI
+							AND FECHA_EFECTO = i.FECHA_EFECTO
+							AND NUM_ANUALIDAD = i.NUM_ANUALIDAD
+							--AND FECHA_VENCIMIENTO = i.FECHA_VENCIMIENTO 
+							AND IDPRODUCT = (SELECT EXT.LIB_GLOBAL_CESCE :getProductId( (select lpad(i.IDMODALIDAD, 3, '0') from dummy), '0', (CASE WHEN (i.IDPAIS > 0 AND i.IDPAIS <= 52) THEN 116 ELSE i.IDPAIS END), i.NUM_POLIZA).productId FROM DUMMY);
+						END IF;
 
 						CALL LIB_GLOBAL_CESCE :w_debug (
 						i_Tenant,
-						'Update línea '|| TO_VARCHAR (numLin) || ' NUM_POLIZA:' || COALESCE(i.NUM_POLIZA, 0) || ',IDMODALIDAD:' || COALESCE(i.IDMODALIDAD, 0) || ',IDMEDIADOR:' || COALESCE (i.IDMEDIADOR, '0') ||
+						'Update línea '|| TO_VARCHAR (numLin) || ' registros actualizados '  || To_VARCHAR(::ROWCOUNT) || ' NUM_POLIZA:' || COALESCE(i.NUM_POLIZA, 0) || ',IDMODALIDAD:' || COALESCE(i.IDMODALIDAD, 0) || ',IDMEDIADOR:' || COALESCE (i.IDMEDIADOR, '0') ||
 						',IDSUBCLAVE:' || COALESCE (i.IDSUBCLAVE, '0') || ',FECHA_INI:' || COALESCE (i.FECHA_INI, '0') || 
 						',FECHA_FIN' || COALESCE (i.FECHA_FIN, '0') || ',TIPO_MOV:' || COALESCE (i.IDTIPO_MOV, 0),
 						vProcedure,
@@ -256,7 +291,7 @@ BEGIN
 
 						CALL LIB_GLOBAL_CESCE :w_debug (
 						i_Tenant,
-						'Insert línea '|| TO_VARCHAR (numLin) || ' NUM_POLIZA:' || COALESCE(i.NUM_POLIZA, 0) || ',IDMODALIDAD:' || COALESCE(i.IDMODALIDAD, 0) || ',IDMEDIADOR:' || COALESCE (i.IDMEDIADOR, '0') ||
+						'Insert línea '|| TO_VARCHAR (numLin) || ' registros insertados '  || To_VARCHAR(::ROWCOUNT) || ' NUM_POLIZA:' || COALESCE(i.NUM_POLIZA, 0) || ',IDMODALIDAD:' || COALESCE(i.IDMODALIDAD, 0) || ',IDMEDIADOR:' || COALESCE (i.IDMEDIADOR, '0') ||
 						',IDSUBCLAVE:' || COALESCE (i.IDSUBCLAVE, '0') || ',FECHA_INI:' || COALESCE (i.FECHA_INI, '0') || 
 						',FECHA_FIN' || COALESCE (i.FECHA_FIN, '0') || ',TIPO_MOV:' || COALESCE (i.IDTIPO_MOV, 0),
 						vProcedure,
@@ -359,7 +394,7 @@ BEGIN
 
 					CALL LIB_GLOBAL_CESCE :w_debug (
 					i_Tenant,
-					'Update línea '|| TO_VARCHAR (numLin) || ' NUM_POLIZA:' || COALESCE(i.NUM_POLIZA, 0) || ',IDMODALIDAD:' || COALESCE(i.IDMODALIDAD, 0) || ',IDMEDIADOR:' || COALESCE (i.IDMEDIADOR, '0') ||
+					'Update línea '|| TO_VARCHAR (numLin) || ' registros actualizados '  || To_VARCHAR(::ROWCOUNT) || ' NUM_POLIZA:' || COALESCE(i.NUM_POLIZA, 0) || ',IDMODALIDAD:' || COALESCE(i.IDMODALIDAD, 0) || ',IDMEDIADOR:' || COALESCE (i.IDMEDIADOR, '0') ||
 					',IDSUBCLAVE:' || COALESCE (i.IDSUBCLAVE, '0') || ',FECHA_INI:' || COALESCE (i.FECHA_INI, '0') || 
 					',FECHA_FIN' || COALESCE (i.FECHA_FIN, '0') || ',TIPO_MOV:' || COALESCE (i.IDTIPO_MOV, 0),
 					vProcedure,
@@ -420,7 +455,7 @@ BEGIN
 
 					CALL LIB_GLOBAL_CESCE :w_debug (
 					i_Tenant,
-					'Insert línea '|| TO_VARCHAR (numLin) || ' NUM_POLIZA:' || COALESCE(i.NUM_POLIZA, 0) || ',IDMODALIDAD:' || COALESCE(i.IDMODALIDAD, 0) || ',IDMEDIADOR:' || COALESCE (i.IDMEDIADOR, '0') ||
+					'Insert línea '|| TO_VARCHAR (numLin) || ' registros insertados '  || To_VARCHAR(::ROWCOUNT) || ' NUM_POLIZA:' || COALESCE(i.NUM_POLIZA, 0) || ',IDMODALIDAD:' || COALESCE(i.IDMODALIDAD, 0) || ',IDMEDIADOR:' || COALESCE (i.IDMEDIADOR, '0') ||
 					',IDSUBCLAVE:' || COALESCE (i.IDSUBCLAVE, '0') || ',FECHA_INI:' || COALESCE (i.FECHA_INI, '0') || 
 					',FECHA_FIN' || COALESCE (i.FECHA_FIN, '0') || ',TIPO_MOV:' || COALESCE (i.IDTIPO_MOV, 0),
 					vProcedure,
@@ -536,7 +571,7 @@ BEGIN
 
 						CALL LIB_GLOBAL_CESCE :w_debug (
 						i_Tenant,
-						'Update linea '|| TO_VARCHAR (numLin) || ' NUM_POLIZA:' || COALESCE(i.NUM_POLIZA, 0) || ',COD_AVAL:' || COALESCE(i.NUM_AVAL_HOST, 0) || ',IDMODALIDAD:' || COALESCE(i.IDMODALIDAD, 0) || ',IDSUBMODALIDAD:' || COALESCE(i.IDSUBMODALIDAD, '0') || 
+						'Update linea '|| TO_VARCHAR (numLin) || ' registros actualizados '  || To_VARCHAR(::ROWCOUNT) || ' NUM_POLIZA:' || COALESCE(i.NUM_POLIZA, 0) || ',COD_AVAL:' || COALESCE(i.NUM_AVAL_HOST, 0) || ',IDMODALIDAD:' || COALESCE(i.IDMODALIDAD, 0) || ',IDSUBMODALIDAD:' || COALESCE(i.IDSUBMODALIDAD, '0') || 
 						',IDMEDIADOR:' || COALESCE (i.IDMEDIADOR, '0') || ',FECHA_EFECTO:' || COALESCE (i.FECHA_EFECTO, '0') || ',FECHA_VENCIMIENTO' || COALESCE (i.FECHA_VENCIMIENTO, '0') || 
 						',TIPO_MOV:' || COALESCE (i.IDTIPO_MOV, 0),
 						vProcedure,
@@ -595,7 +630,7 @@ BEGIN
 
 						CALL LIB_GLOBAL_CESCE :w_debug (
 						i_Tenant,
-						'Insert linea '|| TO_VARCHAR (numLin) || ' NUM_POLIZA:' || COALESCE(i.NUM_POLIZA, 0) || ',COD_AVAL:' || COALESCE(i.NUM_AVAL_HOST, 0) || ',IDMODALIDAD:' || COALESCE(i.IDMODALIDAD, 0) || ',IDSUBMODALIDAD:' || COALESCE(i.IDSUBMODALIDAD, '0') || 
+						'Insert linea '|| TO_VARCHAR (numLin) || ' registros insertados '  || To_VARCHAR(::ROWCOUNT) || ' NUM_POLIZA:' || COALESCE(i.NUM_POLIZA, 0) || ',COD_AVAL:' || COALESCE(i.NUM_AVAL_HOST, 0) || ',IDMODALIDAD:' || COALESCE(i.IDMODALIDAD, 0) || ',IDSUBMODALIDAD:' || COALESCE(i.IDSUBMODALIDAD, '0') || 
 						',IDMEDIADOR:' || COALESCE (i.IDMEDIADOR, '0') || ',FECHA_EFECTO:' || COALESCE (i.FECHA_EFECTO, '0') || ',FECHA_VENCIMIENTO' || COALESCE (i.FECHA_VENCIMIENTO, '0') || 
 						',TIPO_MOV:' || COALESCE (i.IDTIPO_MOV, 0),
 						vProcedure,
@@ -696,7 +731,7 @@ BEGIN
 
 					CALL LIB_GLOBAL_CESCE :w_debug (
 					i_Tenant,
-					'Update linea '|| TO_VARCHAR (numLin) || ' NUM_POLIZA:' || COALESCE(i.NUM_POLIZA, 0) || ',COD_AVAL:' || COALESCE(i.NUM_AVAL_HOST, 0) || ',IDMODALIDAD:' || COALESCE(i.IDMODALIDAD, 0) || ',IDSUBMODALIDAD:' || COALESCE(i.IDSUBMODALIDAD, '0') || 
+					'Update linea '|| TO_VARCHAR (numLin) || ' registros actualizados '  || To_VARCHAR(::ROWCOUNT) || ' NUM_POLIZA:' || COALESCE(i.NUM_POLIZA, 0) || ',COD_AVAL:' || COALESCE(i.NUM_AVAL_HOST, 0) || ',IDMODALIDAD:' || COALESCE(i.IDMODALIDAD, 0) || ',IDSUBMODALIDAD:' || COALESCE(i.IDSUBMODALIDAD, '0') || 
 					',IDMEDIADOR:' || COALESCE (i.IDMEDIADOR, '0') || ',FECHA_EFECTO:' || COALESCE (i.FECHA_EFECTO, '0') || ',FECHA_VENCIMIENTO' || COALESCE (i.FECHA_VENCIMIENTO, '0') || 
 					',TIPO_MOV:' || COALESCE (i.IDTIPO_MOV, 0),
 					vProcedure,
@@ -755,7 +790,7 @@ BEGIN
 
 					CALL LIB_GLOBAL_CESCE :w_debug (
 					i_Tenant,
-					'Insert linea '|| TO_VARCHAR (numLin) || ' NUM_POLIZA:' || COALESCE(i.NUM_POLIZA, 0) || ',COD_AVAL:' || COALESCE(i.NUM_AVAL_HOST, 0) || ',IDMODALIDAD:' || COALESCE(i.IDMODALIDAD, 0) || ',IDSUBMODALIDAD:' || COALESCE(i.IDSUBMODALIDAD, '0') || 
+					'Insert linea '|| TO_VARCHAR (numLin) || ' registros insertados '  || To_VARCHAR(::ROWCOUNT) || ' NUM_POLIZA:' || COALESCE(i.NUM_POLIZA, 0) || ',COD_AVAL:' || COALESCE(i.NUM_AVAL_HOST, 0) || ',IDMODALIDAD:' || COALESCE(i.IDMODALIDAD, 0) || ',IDSUBMODALIDAD:' || COALESCE(i.IDSUBMODALIDAD, '0') || 
 					',IDMEDIADOR:' || COALESCE (i.IDMEDIADOR, '0') || ',FECHA_EFECTO:' || COALESCE (i.FECHA_EFECTO, '0') || ',FECHA_VENCIMIENTO' || COALESCE (i.FECHA_VENCIMIENTO, '0') || 
 					',TIPO_MOV:' || COALESCE (i.IDTIPO_MOV, 0),
 					vProcedure,
