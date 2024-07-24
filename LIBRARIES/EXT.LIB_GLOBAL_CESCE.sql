@@ -1,4 +1,4 @@
-CREATE LIBRARY "EXT"."LIB_GLOBAL_CESCE" LANGUAGE SQLSCRIPT AS
+CREATE OR REPLACE LIBRARY "EXT"."LIB_GLOBAL_CESCE" LANGUAGE SQLSCRIPT AS
 BEGIN
   PUBLIC VARIABLE v_eot                                CONSTANT DATE = TO_DATE('22000101','yyyymmdd');
   PUBLIC VARIABLE cn_DEBUG_OUT                         CONSTANT VARCHAR(50) := 'DEBUG_OUT';
@@ -644,5 +644,57 @@ BEGIN
 		  
 		  DELETE FROM EXT.CSE_DEBUG WHERE DATETIME IN (SELECT DATETIME FROM EXT.CSE_DEBUG WHERE DATETIME >= ADD_DAYS(TO_TIMESTAMP(TO_DATE(CURRENT_TIMESTAMP)), -dias));
 				
+		END;
+		
+	PUBLIC PROCEDURE gestion_backup(IN nombre_tabla NVARCHAR(100), IN unidad_tiempo NVARCHAR(10), IN cantidad_tiempo INT, cReportTable NVARCHAR(100), io_contador INT) LANGUAGE SQLSCRIPT
+	AS
+		BEGIN
+			--Declaración de variables
+			DECLARE i_Tenant VARCHAR(4);
+			
+			--Declaración de cursor para recorrer tablas de backup
+			DECLARE CURSOR tablasBorrar  FOR
+		    SELECT TABLE_NAME
+		    FROM SYS.TABLES
+		    WHERE SCHEMA_NAME = 'EXT'
+		    AND TABLE_NAME LIKE nombre_tabla || '_BKP_%'
+		    AND LENGTH(SUBSTR_AFTER(TABLE_NAME, nombre_tabla||'_BKP_')) = 8
+		    AND SUBSTRING(TABLE_NAME, LENGTH(nombre_tabla||'_BKP_')+8) <> 2
+		    -- Agregar condiciones unidad_tiempo
+		    AND (
+		    	(unidad_tiempo = 'YYYY' AND SUBSTR_AFTER(TABLE_NAME, nombre_tabla||'_BKP_') < TO_VARCHAR(ADD_YEARS(CURRENT_DATE, - cantidad_tiempo),'YYYYMMDD'))
+		      	OR (unidad_tiempo = 'MM' AND SUBSTR_AFTER(TABLE_NAME, nombre_tabla||'_BKP_') < TO_VARCHAR(ADD_MONTHS(CURRENT_DATE, - cantidad_tiempo),'YYYYMMDD'))
+		      	OR (unidad_tiempo = 'DD' AND SUBSTR_AFTER(TABLE_NAME, nombre_tabla||'_BKP_') < TO_VARCHAR(ADD_DAYS(CURRENT_DATE, - cantidad_tiempo),'YYYYMMDD'))
+		      );
+		    
+		    -- Obtenemos tenant  
+		    SELECT TENANTID INTO i_Tenant FROM CS_TENANT;
+		    
+		    -- Se crea un backup de la tabla de cartera si no hubiera uno del día
+			IF (SELECT TABLE_NAME FROM SYS.TABLES where SCHEMA_NAME='EXT' and TABLE_NAME like (nombre_tabla || '_BKP_' || TO_VARCHAR(CURRENT_DATE, 'YYYYMMDD'))) IS NULL THEN
+				EXEC('CREATE COLUMN TABLE EXT.'||nombre_tabla||'_BKP_' || TO_VARCHAR(CURRENT_DATE, 'YYYYMMDD') || ' AS (SELECT * FROM EXT.' || nombre_tabla || ')');
+				CALL w_debug (
+					i_Tenant,
+					'Creado BackUp EXT.' || nombre_tabla ||'_BKP_' || TO_VARCHAR(CURRENT_DATE, 'YYYYMMDD'),
+					cReportTable,
+					io_contador
+				);
+			END IF;
+
+			OPEN  tablasBorrar;
+				FOR tabla AS tablasBorrar DO
+					--EXEC('DROP TABLE EXT.' || tabla.TABLE_NAME);
+				  
+					CALL w_debug (
+			        i_Tenant,
+			        'Borrado BackUp ' || tabla.TABLE_NAME || ' desde libreria LIB_GLOBAL_CESCE:delete_backup',
+			        cReportTable,
+			        io_contador
+			    );
+				END FOR;
+			CLOSE tablasBorrar;
+		
+			
+			
 		END;
 END
