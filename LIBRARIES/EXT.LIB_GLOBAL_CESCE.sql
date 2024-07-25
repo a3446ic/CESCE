@@ -666,9 +666,29 @@ BEGIN
 		      	OR (unidad_tiempo = 'MM' AND SUBSTR_AFTER(TABLE_NAME, nombre_tabla||'_BKP_') < TO_VARCHAR(ADD_MONTHS(CURRENT_DATE, - cantidad_tiempo),'YYYYMMDD'))
 		      	OR (unidad_tiempo = 'DD' AND SUBSTR_AFTER(TABLE_NAME, nombre_tabla||'_BKP_') < TO_VARCHAR(ADD_DAYS(CURRENT_DATE, - cantidad_tiempo),'YYYYMMDD'))
 		      );
-		    
+		   
+		   DECLARE EXIT HANDLER FOR SQLEXCEPTION
+		    BEGIN
+				CALL w_debug (
+								i_Tenant,
+								'Ocurrió un error: ' || ::SQL_ERROR_MESSAGE || '. Error desde libreria LIB_GLOBAL_CESCE:gestion_backup',
+								cReportTable,
+								io_contador
+							);		    
+		        --RESIGNAL;
+		    END;
+    
 		    -- Obtenemos tenant  
 		    SELECT TENANTID INTO i_Tenant FROM CS_TENANT;
+		    
+		    IF (unidad_tiempo IS NULL OR unidad_tiempo = '' OR (unidad_tiempo <> 'YYYY' AND unidad_tiempo <> 'MM' AND unidad_tiempo <> 'DD')) THEN
+			   SIGNAL SQL_ERROR_CODE 10005 SET MESSAGE_TEXT = 'Parámetro unidad_tiempo incorrecto: ' || COALESCE(unidad_tiempo, 'NULL');
+		    END IF;
+		    
+		    IF (SELECT TABLE_NAME FROM SYS.TABLES where SCHEMA_NAME='EXT' and TABLE_NAME = nombre_tabla) IS NULL THEN
+		    	SIGNAL SQL_ERROR_CODE 10006 SET MESSAGE_TEXT = 'Parámetro nombre_tabla incorrecto: ' || COALESCE(nombre_tabla, 'NULL') || ' no existe';
+		    END IF;
+		    
 		    
 		    -- Se crea un backup de la tabla de cartera si no hubiera uno del día
 			IF (SELECT TABLE_NAME FROM SYS.TABLES where SCHEMA_NAME='EXT' and TABLE_NAME like (nombre_tabla || '_BKP_' || TO_VARCHAR(CURRENT_DATE, 'YYYYMMDD'))) IS NULL THEN
