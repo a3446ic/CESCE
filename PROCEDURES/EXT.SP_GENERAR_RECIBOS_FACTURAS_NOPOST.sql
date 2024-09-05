@@ -9,6 +9,7 @@ BEGIN
 -- v8 Modificar consulta de PAYMENTS y DEPOSIT por necesitada de union por tipo de valor porque se duplicaban en caso de monedas diferentes y se filtran IMPORTE_DET <> 0
 -- v9 Se generan detalles de recibos de facturas para depositos y pagos sin calculos
 
+
 -- actualizaOrder 'S' o 'N' para enviar datos al order
 	DECLARE IdRecibo BIGINT;						
 	DECLARE existeFactura INTEGER;
