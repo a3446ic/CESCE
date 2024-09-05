@@ -707,7 +707,7 @@ BEGIN
 				  
 					CALL w_debug (
 			        i_Tenant,
-			        'Borrado BackUp ' || tabla.TABLE_NAME || ' desde libreria LIB_GLOBAL_CESCE:delete_backup',
+			        'Borrado BackUp ' || tabla.TABLE_NAME || ' desde libreria LIB_GLOBAL_CESCE:gestion_backup',
 			        cReportTable,
 			        io_contador
 			    );
