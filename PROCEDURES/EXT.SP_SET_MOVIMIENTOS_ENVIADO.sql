@@ -136,14 +136,7 @@ BEGIN
                 	-------------------------------------------------------------------------------------------------------
 
 					-- Se obtiene el código de mediador de la anualidad anterior
-					SELECT DISTINCT COD_MEDIADOR, COD_SUBCLAVE INTO codigoMediador, subclaveMediador
-                    DEFAULT i.IDMEDIADOR, i.IDSUBCLAVE
-					FROM EXT.CARTERA
-					WHERE NUM_POLIZA = i.NUM_POLIZA
-					AND IDPRODUCT = (SELECT EXT.LIB_GLOBAL_CESCE:getProductId((select lpad(i.IDMODALIDAD, 3, '0') from dummy), '0', (CASE WHEN (i.IDPAIS > 0 AND i.IDPAIS <= 52) THEN 116 ELSE i.IDPAIS END), i.NUM_POLIZA).productId FROM DUMMY)
-					AND ACTIVO = CASE WHEN :mediadoresTraspaso > 0 THEN 2 ELSE 1 END
-					AND NUM_ANUALIDAD = anualidad
-					ORDER BY COD_MEDIADOR DESC
+					                                                                       
 					LIMIT 1
 					OFFSET :contador;
 					-------------------------------------------------------------------------------------------------------

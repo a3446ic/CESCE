@@ -539,6 +539,37 @@ BEGIN
 			AND clas.classifierid = in_idPais;
 		END IF;
 	END;
+
+	PUBLIC FUNCTION getPais(in_idPais VARCHAR(3))
+  RETURNS Name VARCHAR(25) LANGUAGE SQLSCRIPT AS
+	BEGIN
+--Devuelve:
+-- ISOCode – Codigo ISO Del Pais para SAP FI
+
+	IF in_idPais = '' THEN
+		Name := Null;
+	ELSE
+	-- Se busca el Nombre del pais en función del IdPais
+		SELECT clas.Name into Name
+			DEFAULT NULL
+		FROM cs_category cat, cs_category_classifiers ccc, 
+			cs_classifier clas, cs_genericclassifier cgc
+		WHERE cat.ruleelementseq = ccc.categoryseq
+			AND clas.classifierseq = ccc.classifierseq
+			AND clas.classifierseq = cgc.classifierseq
+			AND cat.REMOVEDATE = TO_DATE('22000101','yyyymmdd')
+			AND cat.ISLAST=1
+			AND ccc.REMOVEDATE = TO_DATE('22000101','yyyymmdd') 
+			AND ccc.ISLAST=1
+			AND clas.REMOVEDATE = TO_DATE('22000101','yyyymmdd') 
+			AND clas.ISLAST=1
+			AND cgc.REMOVEDATE = TO_DATE('22000101','yyyymmdd') 
+			AND cgc.ISLAST=1
+			AND cat.NAME = 'ID Paises'
+			AND clas.classifierid = in_idPais;
+		END IF;
+	END;
+
   PUBLIC FUNCTION conversionImp(num DECIMAL(15,3), longitud SMALLINT)
 	RETURNS salida NVARCHAR(20) LANGUAGE SQLSCRIPT AS
 
