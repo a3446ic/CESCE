@@ -82,6 +82,16 @@ if(departamento != 'CENTRAL CESCE'){
   
 } 
 
+if(departamento == 'CENTRAL CESCE' && userType == 'perfil_consulta_espana'){
+
+    //filtros += / AND mom.DIR_TERRITORIAL = '$departamento'/
+    filtros += / AND mom.DIR_TERRITORIAL IN ('DT CENTRO','DT NORTE','DT SUR','DT CATALUÑA-BALEARES','DT LEVANTE','DT NOROESTE')/
+
+    if(userType == 'gerente_canal'){
+      filtros += / AND UPPER(mom.GERENTE_CANAL) LIKE '%$userName%'/
+    }
+
+  }
 
 
 def lim = 1000;
