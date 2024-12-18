@@ -1,2 +1,2 @@
 use datasource.CESCEdb;
-SELECT * FROM ext.lib_global_cesce:getmediadores('${searchPhrase}','$!{currentUser.getDepartment()}','$!{currentUser.getDepartment().getName().toUpperCase()}','$!{currentUser.getUserType()}','$!{currentUser.getName().toUpperCase()}');
+SELECT * FROM EXT.GET_AUTO_MEDIADOR('${searchPhrase}','$!{currentUser.getDepartment()}','$!{currentUser.getDepartment().getName().toUpperCase()}','$!{currentUser.getUserType()}','$!{currentUser.getName().toUpperCase()}');
