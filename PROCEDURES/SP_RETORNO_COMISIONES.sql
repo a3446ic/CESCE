@@ -16,7 +16,7 @@ BEGIN
 	DECLARE commit_interval INT := 1000;
 	DECLARE vDecimal18Defecto VARCHAR(18) := '000000000000000000';
 	DECLARE v_table_exists  Number := 0;
-	DECLARE cVersion CONSTANT VARCHAR(2) := '12';
+	DECLARE cVersion CONSTANT VARCHAR(2) := '13';
 
 -- VERSIONES
 --v01 - Se cambia el codigo que se ponia a mano para comparar el TX.EVENTTYPESEQ por una consulta para que funcione en todos los entornos
@@ -34,7 +34,7 @@ BEGIN
 --          3. Los campos de PRIMA solo se informan para el Mediador Principal CIC para el resto bajan a 0 y solo se informan las comisiones.
 --v11 - Revisión de incidencias: Falta REMOVEDATE de UNITTYPE y Las primas se multiplican por el % participación del mediador (TA.GN1)
 --v12 - se llama a la función de conversion para el porcentaje de comisión, ya que se envia alguno negativo en las regularizaciones y se filtran los registros con Num REcibo real = 0
-
+--v13 - si los tres primeros carácteres de ORDERID son 098 se cambia a 091
 
 	--Cursor para recorrer los campos asociados a este procedimiento de salida de la tabla de formato interfaces
 /*Se deshabilita el cursos de interfaces por Lentitud 	
@@ -95,7 +95,9 @@ DECLARE EXIT HANDLER FOR SQLEXCEPTION
 	)
 		SELECT 'HECHO02' AS IND_REGISTRO, 
 			TO_NVARCHAR(TO_DATE(TX.COMPENSATIONDATE),  'YYYYMM') AS MES, 
-			CONCAT(SUBSTRING(SO.ORDERID, 0, 11), TO_NVARCHAR(TO_DATE(TX.GENERICDATE5),  'YYYYMMDD')) AS ANUALIDAD, 
+			--CONCAT(SUBSTRING(SO.ORDERID, 0, 11), TO_NVARCHAR(TO_DATE(TX.GENERICDATE5),  'YYYYMMDD')) AS ANUALIDAD, 
+			--v13
+			CONCAT(SUBSTRING(CASE WHEN SUBSTRING(SO.ORDERID,0,3) = '098' THEN CONCAT('091',SUBSTRING(SO.ORDERID,4,8)) ELSE SO.ORDERID END, 0, 11), TO_NVARCHAR(TO_DATE(TX.GENERICDATE5),  'YYYYMMDD')) AS ANUALIDAD, 
 			TX.GENERICATTRIBUTE6 AS COD_GARANTIA, 
 			TX.GENERICATTRIBUTE7 AS CUE_RIESGO, 
 			MED.CANAL_DIST_CIC AS CANAL_DISTRIB, 
