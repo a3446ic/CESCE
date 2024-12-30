@@ -12,7 +12,7 @@ CREATE OR REPLACE FUNCTION EXT.GET_AUTO_MEDIADOR(filtro	VARCHAR(250), departamen
 				OR (departamento = 'central_cesce' AND tipoUsuario <> 'perfil_consulta_espana' AND DIR_TERRITORIAL LIKE '%')
 				OR (departamento = 'central_cesce' AND tipoUsuario = 'perfil_consulta_espana' AND DIR_TERRITORIAL IN ('DT CENTRO','DT NORTE','DT SUR','DT CATALUÑA-BALEARES','DT LEVANTE','DT NOROESTE'))
 			)
-			AND UPPER(GERENTE_CANAL) LIKE CASE 
+			AND UPPER(COALESCE(GERENTE_CANAL,'')) LIKE CASE
 				WHEN tipoUsuario = 'gerente_canal' THEN nombre
 				ELSE '%' 
 			END
