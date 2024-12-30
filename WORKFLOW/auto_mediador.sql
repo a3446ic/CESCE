@@ -1,0 +1,2 @@
+use datasource.CESCEdb;
+SELECT * FROM EXT.GET_AUTO_MEDIADOR('${searchPhrase}','$!{currentUser.getDepartment()}','$!{currentUser.getDepartment().getName().toUpperCase()}','$!{currentUser.getUserType()}','$!{currentUser.getName().toUpperCase()}');

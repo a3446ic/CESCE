@@ -539,8 +539,7 @@ BEGIN
 			AND clas.classifierid = in_idPais;
 		END IF;
 	END;
-
-	PUBLIC FUNCTION getPais(in_idPais VARCHAR(3))
+  PUBLIC FUNCTION getPais(in_idPais VARCHAR(3))
   RETURNS Name VARCHAR(25) LANGUAGE SQLSCRIPT AS
 	BEGIN
 --Devuelve:
@@ -569,7 +568,6 @@ BEGIN
 			AND clas.classifierid = in_idPais;
 		END IF;
 	END;
-
   PUBLIC FUNCTION conversionImp(num DECIMAL(15,3), longitud SMALLINT)
 	RETURNS salida NVARCHAR(20) LANGUAGE SQLSCRIPT AS
 
@@ -676,8 +674,7 @@ BEGIN
 		  DELETE FROM EXT.CSE_DEBUG WHERE DATETIME IN (SELECT DATETIME FROM EXT.CSE_DEBUG WHERE DATETIME >= ADD_DAYS(TO_TIMESTAMP(TO_DATE(CURRENT_TIMESTAMP)), -dias));
 				
 		END;
-		
-	PUBLIC PROCEDURE gestion_backup(IN nombre_tabla NVARCHAR(100), IN unidad_tiempo NVARCHAR(10), IN cantidad_tiempo INT, cReportTable NVARCHAR(100), io_contador INT) LANGUAGE SQLSCRIPT
+  PUBLIC PROCEDURE gestion_backup(IN nombre_tabla NVARCHAR(100), IN unidad_tiempo NVARCHAR(10), IN cantidad_tiempo INT, cReportTable NVARCHAR(100), io_contador INT) LANGUAGE SQLSCRIPT
 	AS
 		BEGIN
 			--Declaración de variables
@@ -748,4 +745,27 @@ BEGIN
 			
 			
 		END;
+	
+	PUBLIC FUNCTION getMediadores(filtro	VARCHAR(250), departamento VARCHAR(250), nombreDepartamento VARCHAR(250), tipoUsuario VARCHAR(250), nombre VARCHAR(250)) 
+	RETURNS TABLE (cod_mediador NVARCHAR(250)) LANGUAGE SQLSCRIPT 
+	AS
+	BEGIN
+		RETURN SELECT 
+			COD_MEDIADOR || '-' || SUBCLAVE || ' ' || NUM_IDENTIFICACION || ' ' || IFNULL(NOMBRE, '') || ' ' || "APELLIDO/RAZON_SOCIAL" AS cod_mediador			
+			FROM EXT.MODIFICAR_MEDIADOR 
+			WHERE COD_MEDIADOR IS NOT NULL
+			AND LOWER(COD_MEDIADOR || '-' || SUBCLAVE || ' ' || NUM_IDENTIFICACION || ' ' || IFNULL(NOMBRE, '') || ' ' || "APELLIDO/RAZON_SOCIAL") LIKE LOWER('%'||filtro||'%')
+			AND (
+				(departamento <> 'central_cesce' AND DIR_TERRITORIAL = nombreDepartamento)
+				OR (departamento = 'central_cesce' AND tipoUsuario <> 'perfil_consulta_espana' AND DIR_TERRITORIAL LIKE '%')
+				OR (departamento = 'central_cesce' AND tipoUsuario = 'perfil_consulta_espana' AND DIR_TERRITORIAL IN ('DT CENTRO','DT NORTE','DT SUR','DT CATALUÑA-BALEARES','DT LEVANTE','DT NOROESTE'))
+			)
+			AND UPPER(GERENTE_CANAL) LIKE CASE 
+				WHEN tipoUsuario = 'gerente_canal' THEN nombre
+				ELSE '%' 
+			END
+			ORDER BY 1
+			;
+		
+	END;
 END
