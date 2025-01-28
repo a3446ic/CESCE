@@ -16,7 +16,7 @@ BEGIN
 	DECLARE commit_interval INT := 1000;
 	DECLARE vDecimal18Defecto VARCHAR(18) := '000000000000000000';
 	DECLARE v_table_exists  Number := 0;
-	DECLARE cVersion CONSTANT VARCHAR(2) := '13';
+	DECLARE cVersion CONSTANT VARCHAR(2) := '14';
 
 -- VERSIONES
 --v01 - Se cambia el codigo que se ponia a mano para comparar el TX.EVENTTYPESEQ por una consulta para que funcione en todos los entornos
@@ -34,7 +34,12 @@ BEGIN
 --          3. Los campos de PRIMA solo se informan para el Mediador Principal CIC para el resto bajan a 0 y solo se informan las comisiones.
 --v11 - Revisión de incidencias: Falta REMOVEDATE de UNITTYPE y Las primas se multiplican por el % participación del mediador (TA.GN1)
 --v12 - se llama a la función de conversion para el porcentaje de comisión, ya que se envia alguno negativo en las regularizaciones y se filtran los registros con Num REcibo real = 0
---v13 - si los tres primeros carácteres de ORDERID son 098 se cambia a 091
+--v13 - si los tres primeros carácteres de ORDERID son 098 se cambia a 091. 
+--    - Añadimos campos clave Transacciones para poder cruzar mas fácilmente con contabilidad:ORDERID, LINE, SUBLINE, EVENTYTPESEQ, compensationdate
+--    - Ampliamos filtros de nombre de creditos para resto de monedas
+--v14 - Se quita el cambio que se hizo en la v13 para el ORDERID
+
+
 
 	--Cursor para recorrer los campos asociados a este procedimiento de salida de la tabla de formato interfaces
 /*Se deshabilita el cursos de interfaces por Lentitud 	
@@ -91,13 +96,14 @@ DECLARE EXIT HANDLER FOR SQLEXCEPTION
 		IMP_PENOCOB_FIN, IMP_PENOADQ_INI, IMP_PENOADQ_FIN, IMP_PDEVNOE_INI, IMP_PDEVNOE_FIN, IMP_PEMIINTER, IMP_COMISPEMI, IMP_PCOBINTER, IMP_COMISPCOB, IMP_PDEVPTEMINT_FIN, IMP_COMPDEVPTEMINT_FIN,
 		POR_COMISIONAPL, COD_MONEDA_GES, FEC_MOVIMIEN, NUM_RECIBO, NUM_MOVTO, TPO_MOVTO, COD_SUBMEDIADOR, TPO_COMISION, IMP_PEMITIDA_DIV, IMP_PCOBRADA_DIV, IMP_PEMIINTER_DIV, IMP_COMISPEMI_DIV,
 		IMP_PCOBINTER_DIV, IMP_COMISPCOB_DIV, IMP_PDEVENGADA_DIV, IMP_PENOADQ_INI_DIV, IMP_PENOADQ_FIN_DIV, IMP_PDEVNOE_INI_DIV, IMP_PDEVNOE_FIN_DIV, IMP_PDEVPTEMINT_FIN_DIV,
-		IMP_COMPDEVPTEMINT_FIN_DIV, COD_MONEDA_DIV, PERIODSEQ, PERIODNAME, ACTIVO_CIC
+		IMP_COMPDEVPTEMINT_FIN_DIV, COD_MONEDA_DIV, PERIODSEQ, PERIODNAME, ACTIVO_CIC, ORDERID, LINENUMBER, SUBLINENUMBER, EVENTTYPESEQ, COMPENSATIONDATE
 	)
 		SELECT 'HECHO02' AS IND_REGISTRO, 
 			TO_NVARCHAR(TO_DATE(TX.COMPENSATIONDATE),  'YYYYMM') AS MES, 
-			--CONCAT(SUBSTRING(SO.ORDERID, 0, 11), TO_NVARCHAR(TO_DATE(TX.GENERICDATE5),  'YYYYMMDD')) AS ANUALIDAD, 
+			--v14
+			CONCAT(SUBSTRING(SO.ORDERID, 0, 11), TO_NVARCHAR(TO_DATE(TX.GENERICDATE5),  'YYYYMMDD')) AS ANUALIDAD, 
 			--v13
-			CONCAT(SUBSTRING(CASE WHEN SUBSTRING(SO.ORDERID,0,3) = '098' THEN CONCAT('091',SUBSTRING(SO.ORDERID,4,8)) ELSE SO.ORDERID END, 0, 11), TO_NVARCHAR(TO_DATE(TX.GENERICDATE5),  'YYYYMMDD')) AS ANUALIDAD, 
+			--CONCAT(SUBSTRING(CASE WHEN SUBSTRING(SO.ORDERID,0,3) = '098' THEN CONCAT('091',SUBSTRING(SO.ORDERID,4,8)) ELSE SO.ORDERID END, 0, 11), TO_NVARCHAR(TO_DATE(TX.GENERICDATE5),  'YYYYMMDD')) AS ANUALIDAD, 
 			TX.GENERICATTRIBUTE6 AS COD_GARANTIA, 
 			TX.GENERICATTRIBUTE7 AS CUE_RIESGO, 
 			MED.CANAL_DIST_CIC AS CANAL_DISTRIB, 
@@ -155,7 +161,8 @@ DECLARE EXIT HANDLER FOR SQLEXCEPTION
 			--pPlRunSeq AS PERIODSEQ,
 			vPeriodSeq AS PERIODSEQ,
 			periodoName AS PERIODNAME,
-			IFNULL (TA.GENERICBOOLEAN1,1) AS ACTIVO_CIC
+			IFNULL (TA.GENERICBOOLEAN1,1) AS ACTIVO_CIC,
+			SO.ORDERID, TX.LINENUMBER, TX.SUBLINENUMBER, TX.EVENTTYPESEQ, TX.COMPENSATIONDATE
 		FROM CS_CREDIT CR
 			INNER JOIN CS_PERIOD PER ON PER.PERIODSEQ = CR.PERIODSEQ AND PER.REMOVEDATE = TO_DATE('22000101','yyyymmdd')
 			LEFT JOIN CS_SALESTRANSACTION TX ON CR.SALESTRANSACTIONSEQ = TX.SALESTRANSACTIONSEQ
@@ -165,7 +172,8 @@ DECLARE EXIT HANDLER FOR SQLEXCEPTION
 			LEFT JOIN CS_TRANSACTIONASSIGNMENT TA ON CR.SALESTRANSACTIONSEQ = TA.SALESTRANSACTIONSEQ AND TA.POSITIONNAME = MED.POSITIONNAME
 		WHERE PER.NAME LIKE periodoName
 		AND PER.REMOVEDATE = TO_DATE('22000101','yyyymmdd')
-		AND cr.NAME IN ('CD_SP_Comision_Emision', 'CD_SP_Comision_Renovacion','CD_PT_Comision_Emision', 'CD_PT_Comision_Renovacion','CD_SP_Comision_Emision_USD', 'CD_SP_Comision_Renovacion_USD')
+--		AND cr.NAME IN ('CD_SP_Comision_Emision', 'CD_SP_Comision_Renovacion','CD_PT_Comision_Emision', 'CD_PT_Comision_Renovacion','CD_SP_Comision_Emision_USD', 'CD_SP_Comision_Renovacion_USD')
+		AND ( cr.NAME like 'CD_%_Comision_Emision%' or cr.NAME like 'CD_%_Comision_Renovacion%' )
 		AND TX.GENERICATTRIBUTE2 is not null;  --v12 se filtran los movimientos sin numero de recibo real aunque no deberian existir
 
 	SELECT COUNT(*) INTO filasInsertadasPre FROM EXT.EXT_RETORNO_COMISIONES_PRE WHERE PERIODSEQ = vPeriodSeq;
@@ -587,4 +595,4 @@ DECLARE EXIT HANDLER FOR SQLEXCEPTION
 
 	CALL LIB_GLOBAL_CESCE:w_debug (i_Tenant, 'FIN PROCEDIMIENTO with SESSION_USER ' || SESSION_USER, vProcedure ,io_contador);
 
-END;
+END
