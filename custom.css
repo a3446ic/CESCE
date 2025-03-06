@@ -1,0 +1,17 @@
+.queryTable th {
+    display:none;
+}
+.queryTable tbody tr:nth-child(2) td {
+    background-color: grey;
+    color: white;
+}
+.caseActionContent .head {
+	background-color: #354a5f;
+}
+
+#newcase-arrow {
+    right: 52px;
+}
+#newCaseMenuItem {
+    right:0px !important;
+}
