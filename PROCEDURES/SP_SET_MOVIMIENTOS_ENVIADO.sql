@@ -2,9 +2,9 @@ CREATE OR REPLACE PROCEDURE "EXT"."SP_SET_MOVIMIENTOS_ENVIADO" (IN tipoMov VARCH
 BEGIN
 
 	----------------------------- Versiones ---------------------------------
-	-- v06: Porcentajes especiales añadidos a las sentencias de insert y sentencia update para tablas hist no comprueba si registro en cartera
-	-- v07: Para movimientos de fianzas, se ha modificado el insert y el update en cartera para que en el campo FECHA_EMISION se inserte o actualice con la fecha de efecto.
-	-- v08: En cartera, se inserta activo a 0 si las fechas de inicio y fin no son correctas.
+	-- v06: Porcentajes especiales añadidos a las sentencias de insert y sentencia update para tablas hist no comprueba si registro en CARTERA
+	-- v07: Para movimientos de fianzas, se ha modificado el insert y el update en CARTERA para que en el campo FECHA_EMISION se inserte o actualice con la fecha de efecto.
+	-- v08: En CARTERA, se inserta activo a 0 si las fechas de inicio y fin no son correctas.
 	-- v09: Se ha modificado el flujo para tener en cuenta el tipo de movimiento.
 	-- v10: Se ha cambiado la comprobación de los registros duplicados para que detecte los de tipo de movimiento 2
 	-- v11: Se añaden los nombre de campos de EXT_MOVIMIENTO_CARTERA_CREDITO_HIST para pbtener el COD_MEDIADOR y SUBCLAVE formateado a 4 digitos
@@ -17,9 +17,25 @@ BEGIN
 	-- v17: Llamada procedimientos EXT.GENPET_MVCARTERA y EXT_CREAR_EXPEDIENTE
     -- v18: añadir 8 posiciones a la función getProductId
     -- v19: cambiar COALESCE(COUNT(*),) por CASE WHEN...
+    -- v20: Añadir condicion ACTIVO <> 0 (linea 439)
+    -- v21: Añadir LPAD(IDPRODUCT,3,0)
+    -- v22: SMM 20251217 Quitar LPAD(IDPRODUCT,3,0) en CREDITO
+    -- v23: SMM 20251218 Updateamos registros con ACTIVO > 0
+    -- v24: SMM 20251223 Corregir errores pólizas con varios mediadores
+    --					 Quitar LPAD(IDPRODUCT,3,0) en CAUCION	
+    -- v25: SMM 20260113 Cambiar i.SUBMODALIDAD en la función getProductId (Se estaba pasando 0 en CAUCION)
+    --					 Añadir EXPEDIENTES cuando NUM_AVAL_FIANZA IS NULL	
+    -- v26: SMM 20260123 Controlar producto EXPEDIENTES
+    -- v27: SMM 20260202 Eliminar mensaje debug.
+    --					 Añadir llamada al procedimiento SP_CORREGIR_POLIZAS	
+    -- v28: SMM 20260205 Eliminar condición de FECHA_EFECTO
+    -- v29: SMM 20260217 Eliminar condición de FECHA_INICIO
+    -- v30: SMM 20260316 Cambio % intermediación. 
+	--				    	Insert: cogemos lo que venga en el fichero. 
+	--				    	Update: manda SAP Commisions (se queda como está)
 	-------------------------------------------------------------------------
 
-	DECLARE cVersion CONSTANT VARCHAR(2) := '19';
+	DECLARE cVersion CONSTANT VARCHAR(2) := '30';
 	DECLARE i_Tenant VARCHAR2(127);
 	DECLARE vProcedure VARCHAR2(127);
 	DECLARE io_contador  INTEGER := 0;
@@ -152,6 +168,11 @@ BEGIN
 					AND IDPRODUCT = (SELECT EXT.LIB_GLOBAL_CESCE:getProductId((select lpad(i.IDMODALIDAD, 3, '0') from dummy), '0', (CASE WHEN (i.IDPAIS > 0 AND i.IDPAIS <= 52) THEN 116 ELSE i.IDPAIS END), lpad(i.NUM_POLIZA , 8, '0')).productId FROM DUMMY)
 					AND ACTIVO = CASE WHEN :mediadoresTraspaso > 0 THEN 2 ELSE 1 END
 					AND NUM_ANUALIDAD = anualidad
+					------------------------------------
+					--v24: SMM 20251223
+					AND COD_MEDIADOR <> I.IDMEDIADOR
+					AND COD_SUBCLAVE <> I.IDSUBCLAVE
+					------------------------------------
 					ORDER BY COD_MEDIADOR DESC
 					LIMIT 1
 					OFFSET :contador;
@@ -185,10 +206,10 @@ BEGIN
 								PRIMA_MIN_EXT = i.PRIMA_MIN_MERCADO_EXT,
 								COD_MEDIADOR = codigoMediador,
 								COD_SUBCLAVE = subclaveMediador,
-								P_INTERMEDIACION = 100 * i.PORC_INTERMEDIACION,
+								--SMM v30 P_INTERMEDIACION = 100 * i.PORC_INTERMEDIACION,
 								--FECHA_INICIO = i.FECHA_INI,
 								FECHA_INICIO = fechaInicio,
-								FECHA_FIN = fechaFin,
+								FECHA_FIN = CASE WHEN (fechaFin is null or fechaFin = '2099-12-31') THEN TO_DATE('2200-01-01','YYYY-MM-DD') ELSE fechaFin END,
 								NIF_TOMADOR = i.IDFISCAL_TOMADOR,
 								NOMBRE_TOMADOR = '',  -- NO VIENE EN EL FICHERO
 								--i.NOMBRE_TOMADOR,
@@ -201,6 +222,7 @@ BEGIN
 		                    AND COD_MEDIADOR = codigoMediador
 		                    AND COD_SUBCLAVE = subclaveMediador
 		                    AND NUM_ANUALIDAD = CASE WHEN ACTIVO = 2 THEN anualidad ELSE i.NUM_ANUALIDAD END
+		                    AND ACTIVO > 0
 		                    AND IDPRODUCT = (SELECT EXT.LIB_GLOBAL_CESCE:getProductId((select lpad(i.IDMODALIDAD, 3, '0') from dummy), '0', (CASE WHEN (i.IDPAIS > 0 AND i.IDPAIS <= 52) THEN 116 ELSE i.IDPAIS END), lpad(i.NUM_POLIZA , 8, '0')).productId FROM DUMMY);
 
 						ELSE
@@ -218,10 +240,10 @@ BEGIN
 								PRIMA_MIN_EXT = i.PRIMA_MIN_MERCADO_EXT,
 								COD_MEDIADOR = codigoMediador,
 								COD_SUBCLAVE = subclaveMediador,
-								P_INTERMEDIACION = 100 * i.PORC_INTERMEDIACION,
+								--SMM v30 P_INTERMEDIACION = 100 * i.PORC_INTERMEDIACION,
 								--FECHA_INICIO = i.FECHA_INI,
 								FECHA_INICIO = fechaInicio,
-								FECHA_FIN = fechaFin,
+								FECHA_FIN = CASE WHEN (fechaFin is null or fechaFin = '2099-12-31') THEN TO_DATE('2200-01-01','YYYY-MM-DD') ELSE fechaFin END,
 								NIF_TOMADOR = i.IDFISCAL_TOMADOR,
 								NOMBRE_TOMADOR = '',  -- NO VIENE EN EL FICHERO
 								--i.NOMBRE_TOMADOR,
@@ -237,6 +259,7 @@ BEGIN
 							AND FECHA_EFECTO = i.FECHA_EFECTO
 							AND NUM_ANUALIDAD = i.NUM_ANUALIDAD
 							--AND FECHA_VENCIMIENTO = i.FECHA_VENCIMIENTO 
+							AND ACTIVO > 0
 							AND IDPRODUCT = (SELECT EXT.LIB_GLOBAL_CESCE :getProductId( (select lpad(i.IDMODALIDAD, 3, '0') from dummy), '0', (CASE WHEN (i.IDPAIS > 0 AND i.IDPAIS <= 52) THEN 116 ELSE i.IDPAIS END), lpad(i.NUM_POLIZA , 8, '0')).productId FROM DUMMY);
 						END IF;
 
@@ -296,7 +319,7 @@ BEGIN
 							--i.FECHA_INI,
 							fechaInicio,
 							--i.FECHA_FIN,
-							fechaFin,
+							CASE WHEN (fechaFin is null or fechaFin = '2099-12-31') THEN TO_DATE('2200-01-01','YYYY-MM-DD') ELSE fechaFin END,
 							CASE WHEN especialEmision = 0 THEN NULL ELSE especialEmision END,
 							CASE WHEN especialRenovacion = 0 THEN NULL ELSE especialRenovacion END,
 							i.IDFISCAL_TOMADOR,
@@ -349,13 +372,14 @@ BEGIN
 		                    AND FECHA_INICIO = i.FECHA_INI;
 		                ELSE 
 				        -- Manejo de error: asignar valor por defecto, loguear, etc.
-				        CALL LIB_GLOBAL_CESCE :w_debug (
-						    i_Tenant,
-						    'SQL_ERROR_MESSAGE: fetch returns more than requested number of rows:  SQL_ERROR_CODE: 1300 - NUM_POLIZA: '|| i.NUM_POLIZA 
-						    	|| ' IDMODALIDAD: ' || i.IDMODALIDAD || ' IDMEDIADOR: ' || i.IDMEDIADOR || ' IDSUBCLAVE: ' || i.IDSUBCLAVE,
-						    'SP_SET_MOVIMIENTOS_ENVIADO',
-						    io_contador
-						);
+				        --SMM v27: Se comenta el mensaje para que no aparezca en el log
+				  --      CALL LIB_GLOBAL_CESCE :w_debug (
+						--     i_Tenant,
+						--     'SQL_ERROR_MESSAGE: fetch returns more than requested number of rows:  SQL_ERROR_CODE: 1300 - NUM_POLIZA: '|| i.NUM_POLIZA 
+						--     	|| ' IDMODALIDAD: ' || i.IDMODALIDAD || ' IDMEDIADOR: ' || i.IDMEDIADOR || ' IDSUBCLAVE: ' || i.IDSUBCLAVE,
+						--     'SP_SET_MOVIMIENTOS_ENVIADO',
+						--     io_contador
+						-- );
 						-- CONTINUE;
 						fechaVencimientoAnterior := i.FECHA_VENCIMIENTO;
 						fechaEfectoAnterior := i.FECHA_EFECTO;
@@ -377,7 +401,7 @@ BEGIN
                 END IF;
                 -------------------------------------------------------------------------------------------------------
             
-				-- Se busca si ya existe la póliza en Cartera
+				-- Se busca si ya existe la póliza en CARTERA
 				IF i.IDTIPO_MOV = 3 THEN
 					-- SELECT COALESCE(COUNT(*),0) INTO registroExistente DEFAULT 0
 					SELECT CASE WHEN COUNT(*) = 0 THEN 0 ELSE COUNT(*) END INTO registroExistente DEFAULT 0
@@ -386,8 +410,10 @@ BEGIN
 					AND COD_MEDIADOR = i.IDMEDIADOR 
 					AND COD_SUBCLAVE = i.IDSUBCLAVE
 					AND (FECHA_EFECTO = i.FECHA_EFECTO OR fechaVencimientoAnterior = i.FECHA_VENCIMIENTO)
-					AND FECHA_INICIO = i.FECHA_INI
+					--SMM 20261702 AND FECHA_INICIO = fechaInicio
+					AND NUM_ANUALIDAD = i.NUM_ANUALIDAD
 					AND IDPRODUCT = (SELECT EXT.LIB_GLOBAL_CESCE:getProductId((select lpad(i.IDMODALIDAD, 3, '0') from dummy), '0', (CASE WHEN (i.IDPAIS > 0 AND i.IDPAIS <= 52) THEN 116 ELSE i.IDPAIS END), lpad(i.NUM_POLIZA , 8, '0')).productId FROM DUMMY);
+				
 				ELSE
 					-- SELECT COALESCE(COUNT(*),0) INTO registroExistente DEFAULT 0
 					SELECT CASE WHEN COUNT(*) = 0 THEN 0 ELSE COUNT(*) END INTO registroExistente DEFAULT 0
@@ -395,11 +421,16 @@ BEGIN
 					WHERE NUM_POLIZA = i.NUM_POLIZA 
 					AND COD_MEDIADOR = i.IDMEDIADOR 
 					AND COD_SUBCLAVE = i.IDSUBCLAVE
-					AND FECHA_EFECTO = i.FECHA_EFECTO
-					AND FECHA_INICIO = fechaInicio
+					------------------------------------
+					--v24: SMM 20251223
+					-- AND FECHA_EFECTO = i.FECHA_EFECTO
+					------------------------------------
+					--v29: SMM 20261702 AND FECHA_INICIO = fechaInicio
+					AND NUM_ANUALIDAD = i.NUM_ANUALIDAD
 					AND IDPRODUCT = (SELECT EXT.LIB_GLOBAL_CESCE:getProductId((select lpad(i.IDMODALIDAD, 3, '0') from dummy), '0', (CASE WHEN (i.IDPAIS > 0 AND i.IDPAIS <= 52) THEN 116 ELSE i.IDPAIS END), lpad(i.NUM_POLIZA , 8, '0')).productId FROM DUMMY);
 				END IF;
 				-------------------------------------------------------------------------------------------------------
+		
 		
 				IF registroExistente >= 1 THEN --UPDATE
         
@@ -417,10 +448,10 @@ BEGIN
 						PRIMA_MIN_EXT = i.PRIMA_MIN_MERCADO_EXT,
 						COD_MEDIADOR = codigoMediador,
 						COD_SUBCLAVE = subclaveMediador,
-						P_INTERMEDIACION = 100 * i.PORC_INTERMEDIACION,
+						--SMM v30 P_INTERMEDIACION = 100 * i.PORC_INTERMEDIACION,
 						--FECHA_INICIO = i.FECHA_INI,
-						FECHA_INICIO = fechaInicio,
-						FECHA_FIN = fechaFin,
+						--v29: SMM 20261702 FECHA_INICIO = fechaInicio,
+						--v29: SMM 20261702 FECHA_FIN = CASE WHEN (fechaFin is null or fechaFin = '2099-12-31') THEN TO_DATE('2200-01-01','YYYY-MM-DD') ELSE fechaFin END,
 						NIF_TOMADOR = i.IDFISCAL_TOMADOR,
 						NOMBRE_TOMADOR = '',  -- NO VIENE EN EL FICHERO
 						--i.NOMBRE_TOMADOR,
@@ -432,9 +463,13 @@ BEGIN
 					WHERE NUM_POLIZA = i.NUM_POLIZA 
 					AND COD_MEDIADOR = i.IDMEDIADOR 
 					AND COD_SUBCLAVE = i.IDSUBCLAVE 
-					AND FECHA_INICIO = i.FECHA_INI
-					AND FECHA_EFECTO = i.FECHA_EFECTO
+					-- AND FECHA_INICIO = i.FECHA_INI
+					------------------------------------
+					--v24: SMM 20251223
+					-- AND FECHA_EFECTO = i.FECHA_EFECTO
+					------------------------------------
 					AND NUM_ANUALIDAD = i.NUM_ANUALIDAD
+					AND ACTIVO <> 0
 					--AND FECHA_VENCIMIENTO = i.FECHA_VENCIMIENTO 
 					AND IDPRODUCT = (SELECT EXT.LIB_GLOBAL_CESCE :getProductId( (select lpad(i.IDMODALIDAD, 3, '0') from dummy), '0', (CASE WHEN (i.IDPAIS > 0 AND i.IDPAIS <= 52) THEN 116 ELSE i.IDPAIS END), lpad(i.NUM_POLIZA , 8, '0')).productId FROM DUMMY);
 
@@ -494,7 +529,7 @@ BEGIN
 						--i.FECHA_INI,
 						fechaInicio,
 						--i.FECHA_FIN,
-						fechaFin,
+						CASE WHEN (fechaFin is null or fechaFin = '2099-12-31') THEN TO_DATE('2200-01-01','YYYY-MM-DD') ELSE fechaFin END,
 						CASE WHEN especialEmision = 0 THEN NULL ELSE especialEmision END,
 						CASE WHEN especialRenovacion = 0 THEN NULL ELSE especialRenovacion END,
 						i.IDFISCAL_TOMADOR,
@@ -548,27 +583,65 @@ BEGIN
 			-- Se hacen distintas operaciones seg�n el tipo de de movimiento
 			IF i.IDTIPO_MOV = 2 THEN
 
-				-- Se busca el número de mediadores que tienen el activo = 2 (la póliza se ha traspasado)
-				-- SELECT COALESCE(count(*), 0) INTO mediadoresTraspaso DEFAULT 0
-				SELECT CASE WHEN COUNT(*) = 0 THEN 0 ELSE COUNT(*) END INTO mediadoresTraspaso DEFAULT 0
-				FROM EXT.CARTERA
-				WHERE NUM_POLIZA = i.NUM_POLIZA
-				AND NUM_FIANZA = i.NUM_AVAL_FIANZA
-				AND NUM_AVAL_HOST = i.NUM_AVAL_HOST
-				AND ACTIVO = 2
-				AND IDPRODUCT = (SELECT EXT.LIB_GLOBAL_CESCE:getProductId( (select lpad(i.IDMODALIDAD, 3, '0') from dummy), i.IDSUBMODALIDAD, (CASE WHEN (i.IDPAIS > 0 AND i.IDPAIS <= 52) THEN '116' ELSE i.IDPAIS END), lpad(i.NUM_POLIZA , 8, '0')).productId FROM DUMMY);
-
-				-- Se busca el número de mediadores que intermedian la póliza con activo = 1 (Se renueva sin traspaso)
-				-- SELECT COALESCE(count(*), 1) INTO registrosRenovacion DEFAULT 1
-				SELECT CASE WHEN COUNT(*) = 0 THEN 1 ELSE COUNT(*) END INTO registrosRenovacion DEFAULT 1
-				FROM EXT.CARTERA
-				WHERE NUM_POLIZA = i.NUM_POLIZA
-				AND NUM_FIANZA = i.NUM_AVAL_FIANZA
-				AND NUM_AVAL_HOST = i.NUM_AVAL_HOST
-				AND IDPRODUCT = (SELECT EXT.LIB_GLOBAL_CESCE:getProductId((select lpad(i.IDMODALIDAD, 3, '0') from dummy), '0', (CASE WHEN (i.IDPAIS > 0 AND i.IDPAIS <= 52) THEN 116 ELSE i.IDPAIS END), lpad(i.NUM_POLIZA , 8, '0')).productId FROM DUMMY)
-				AND ACTIVO = CASE WHEN :mediadoresTraspaso > 0 THEN 2 ELSE 1 END
-				AND FECHA_EFECTO = i.FECHA_EFECTO
-				AND FECHA_INICIO = fechaInicio;
+				IF i.NUM_AVAL_FIANZA IS NULL THEN
+					-- Se busca el número de mediadores que tienen el activo = 2 (la póliza se ha traspasado)
+					-- SELECT COALESCE(count(*), 0) INTO mediadoresTraspaso DEFAULT 0
+					SELECT CASE WHEN COUNT(*) = 0 THEN 0 ELSE COUNT(*) END INTO mediadoresTraspaso DEFAULT 0
+					FROM EXT.CARTERA
+					WHERE NUM_POLIZA = i.NUM_POLIZA
+					AND COALESCE(NUM_FIANZA,-1) = COALESCE(i.NUM_AVAL_FIANZA,-1)
+					AND COALESCE(NUM_AVAL_HOST,-1) = COALESCE(i.NUM_AVAL_HOST,-1)
+					AND ACTIVO = 2
+					-- AND IDPRODUCT = (SELECT EXT.LIB_GLOBAL_CESCE:getProductId( (select lpad(i.IDMODALIDAD, 3, '0') from dummy), i.IDSUBMODALIDAD, (CASE WHEN (i.IDPAIS > 0 AND i.IDPAIS <= 52) THEN '116' ELSE i.IDPAIS END), lpad(i.NUM_POLIZA , 8, '0')).productId FROM DUMMY);
+					AND (
+    						(i.NUM_AVAL_FIANZA IS NULL AND IDPRODUCT IN ('', '0'))
+    						OR (i.NUM_AVAL_FIANZA IS NOT NULL AND IDPRODUCT = (
+        				    SELECT EXT.LIB_GLOBAL_CESCE:getProductId(LPAD(i.IDMODALIDAD, 3, '0'),i.IDSUBMODALIDAD,CASE WHEN i.IDPAIS > 0 AND i.IDPAIS <= 52 THEN '116' ELSE i.IDPAIS END, LPAD(i.NUM_POLIZA, 8, '0')).productId FROM DUMMY))
+						);
+					
+					-- Se busca el número de mediadores que intermedian la póliza con activo = 1 (Se renueva sin traspaso)
+					-- SELECT COALESCE(count(*), 1) INTO registrosRenovacion DEFAULT 1
+					SELECT CASE WHEN COUNT(*) = 0 THEN 1 ELSE COUNT(*) END INTO registrosRenovacion DEFAULT 1
+					FROM EXT.CARTERA
+					WHERE NUM_POLIZA = i.NUM_POLIZA
+					AND COALESCE(NUM_FIANZA,-1) = COALESCE(i.NUM_AVAL_FIANZA,-1)
+					AND COALESCE(NUM_AVAL_HOST,-1) = COALESCE(i.NUM_AVAL_HOST,-1)
+					-- AND IDPRODUCT = (SELECT EXT.LIB_GLOBAL_CESCE:getProductId((select lpad(i.IDMODALIDAD, 3, '0') from dummy), i.IDSUBMODALIDAD, (CASE WHEN (i.IDPAIS > 0 AND i.IDPAIS <= 52) THEN 116 ELSE i.IDPAIS END), lpad(i.NUM_POLIZA , 8, '0')).productId FROM DUMMY)
+					AND (
+    						(i.NUM_AVAL_FIANZA IS NULL AND IDPRODUCT IN ('', '0'))
+    						OR (i.NUM_AVAL_FIANZA IS NOT NULL AND IDPRODUCT = (
+        				    SELECT EXT.LIB_GLOBAL_CESCE:getProductId(LPAD(i.IDMODALIDAD, 3, '0'),i.IDSUBMODALIDAD,CASE WHEN i.IDPAIS > 0 AND i.IDPAIS <= 52 THEN '116' ELSE i.IDPAIS END, LPAD(i.NUM_POLIZA, 8, '0')).productId FROM DUMMY))
+						)
+					AND ACTIVO = CASE WHEN :mediadoresTraspaso > 0 THEN 2 ELSE 1 END
+					-- AND FECHA_INICIO = fechaInicio
+					;
+					
+					
+				ELSE
+						-- Se busca el número de mediadores que tienen el activo = 2 (la póliza se ha traspasado)
+						-- SELECT COALESCE(count(*), 0) INTO mediadoresTraspaso DEFAULT 0
+						SELECT CASE WHEN COUNT(*) = 0 THEN 0 ELSE COUNT(*) END INTO mediadoresTraspaso DEFAULT 0
+						FROM EXT.CARTERA
+						WHERE NUM_POLIZA = i.NUM_POLIZA
+						AND NUM_FIANZA = i.NUM_AVAL_FIANZA
+						AND NUM_AVAL_HOST = i.NUM_AVAL_HOST
+						AND ACTIVO = 2
+						AND IDPRODUCT = (SELECT EXT.LIB_GLOBAL_CESCE:getProductId( (select lpad(i.IDMODALIDAD, 3, '0') from dummy), i.IDSUBMODALIDAD, (CASE WHEN (i.IDPAIS > 0 AND i.IDPAIS <= 52) THEN '116' ELSE i.IDPAIS END), lpad(i.NUM_POLIZA , 8, '0')).productId FROM DUMMY);
+		
+						-- Se busca el número de mediadores que intermedian la póliza con activo = 1 (Se renueva sin traspaso)
+						-- SELECT COALESCE(count(*), 1) INTO registrosRenovacion DEFAULT 1
+						SELECT CASE WHEN COUNT(*) = 0 THEN 1 ELSE COUNT(*) END INTO registrosRenovacion DEFAULT 1
+						FROM EXT.CARTERA
+						WHERE NUM_POLIZA = i.NUM_POLIZA
+						AND NUM_FIANZA = i.NUM_AVAL_FIANZA
+						AND NUM_AVAL_HOST = i.NUM_AVAL_HOST
+						AND IDPRODUCT = (SELECT EXT.LIB_GLOBAL_CESCE:getProductId((select lpad(i.IDMODALIDAD, 3, '0') from dummy), i.IDSUBMODALIDAD, (CASE WHEN (i.IDPAIS > 0 AND i.IDPAIS <= 52) THEN 116 ELSE i.IDPAIS END), lpad(i.NUM_POLIZA , 8, '0')).productId FROM DUMMY)
+						AND ACTIVO = CASE WHEN :mediadoresTraspaso > 0 THEN 2 ELSE 1 END
+						AND FECHA_EFECTO = i.FECHA_EFECTO
+						AND FECHA_INICIO = fechaInicio;
+				
+                END IF;
+				
 
 				-- Se inserta o actualiza el registro de la renovación para cada mediador
 				FOR contador IN 0..(registrosRenovacion-1) DO
@@ -580,28 +653,74 @@ BEGIN
 					WHERE NUM_POLIZA = i.NUM_POLIZA
 					AND NUM_FIANZA = i.NUM_AVAL_FIANZA
 					AND NUM_AVAL_HOST = i.NUM_AVAL_HOST
-					AND IDPRODUCT = (SELECT EXT.LIB_GLOBAL_CESCE:getProductId((select lpad(i.IDMODALIDAD, 3, '0') from dummy), '0', (CASE WHEN (i.IDPAIS > 0 AND i.IDPAIS <= 52) THEN 116 ELSE i.IDPAIS END), lpad(i.NUM_POLIZA , 8, '0')).productId FROM DUMMY)
+					AND IDPRODUCT = (SELECT EXT.LIB_GLOBAL_CESCE:getProductId((select lpad(i.IDMODALIDAD, 3, '0') from dummy), i.IDSUBMODALIDAD, (CASE WHEN (i.IDPAIS > 0 AND i.IDPAIS <= 52) THEN 116 ELSE i.IDPAIS END), lpad(i.NUM_POLIZA , 8, '0')).productId FROM DUMMY)
 					AND ACTIVO = CASE WHEN :mediadoresTraspaso > 0 THEN 2 ELSE 1 END
 					ORDER BY COD_MEDIADOR DESC
 					LIMIT 1
 					OFFSET :contador;
 					-------------------------------------------------------------------------------------------------------
-
-                    -- SELECT COALESCE(COUNT(*),0) INTO registroExistente DEFAULT 0
-                    SELECT CASE WHEN COUNT(*) = 0 THEN 0 ELSE COUNT(*) END INTO registroExistente DEFAULT 1
-                    FROM EXT.CARTERA
-                    WHERE NUM_POLIZA = i.NUM_POLIZA 
-                    AND COD_MEDIADOR = codigoMediador
-                    AND COD_SUBCLAVE = subclaveMediador
-					AND NUM_FIANZA = i.NUM_AVAL_FIANZA
-					AND NUM_AVAL_HOST = i.NUM_AVAL_HOST
-					AND FECHA_EFECTO = i.FECHA_EFECTO
-					AND FECHA_INICIO = fechaInicio
-                    AND IDPRODUCT = (SELECT EXT.LIB_GLOBAL_CESCE:getProductId((select lpad(i.IDMODALIDAD, 3, '0') from dummy), '0', (CASE WHEN (i.IDPAIS > 0 AND i.IDPAIS <= 52) THEN 116 ELSE i.IDPAIS END), lpad(i.NUM_POLIZA , 8, '0')).productId FROM DUMMY);
+					IF i.NUM_AVAL_FIANZA IS NULL THEN
+						SELECT CASE WHEN COUNT(*) = 0 THEN 0 ELSE COUNT(*) END INTO registroExistente DEFAULT 1
+                    	FROM EXT.CARTERA
+                    	WHERE NUM_POLIZA = i.NUM_POLIZA 
+                    	AND COD_MEDIADOR = codigoMediador
+                    	AND COD_SUBCLAVE = subclaveMediador
+						AND COALESCE(NUM_FIANZA,-1) = COALESCE(i.NUM_AVAL_FIANZA,-1)
+						AND COALESCE(NUM_AVAL_HOST,-1) = COALESCE(i.NUM_AVAL_HOST,-1)
+						--V28 AND FECHA_EFECTO = i.FECHA_EFECTO
+						-- AND FECHA_INICIO = fechaInicio
+                    	AND (
+    						(i.NUM_AVAL_FIANZA IS NULL AND IDPRODUCT IN ('', '0'))
+    						OR (i.NUM_AVAL_FIANZA IS NOT NULL AND IDPRODUCT = (
+        				    SELECT EXT.LIB_GLOBAL_CESCE:getProductId(LPAD(i.IDMODALIDAD, 3, '0'),i.IDSUBMODALIDAD,CASE WHEN i.IDPAIS > 0 AND i.IDPAIS <= 52 THEN '116' ELSE i.IDPAIS END, LPAD(i.NUM_POLIZA, 8, '0')).productId FROM DUMMY))
+						);
+						
+					
+					ELSE
+                    	-- SELECT COALESCE(COUNT(*),0) INTO registroExistente DEFAULT 0
+                    	SELECT CASE WHEN COUNT(*) = 0 THEN 0 ELSE COUNT(*) END INTO registroExistente DEFAULT 1
+                    	FROM EXT.CARTERA
+                    	WHERE NUM_POLIZA = i.NUM_POLIZA 
+                    	AND COD_MEDIADOR = codigoMediador
+                    	AND COD_SUBCLAVE = subclaveMediador
+						AND NUM_FIANZA = i.NUM_AVAL_FIANZA
+						AND NUM_AVAL_HOST = i.NUM_AVAL_HOST
+						AND FECHA_EFECTO = i.FECHA_EFECTO
+						AND FECHA_INICIO = fechaInicio
+                    	AND IDPRODUCT = (SELECT EXT.LIB_GLOBAL_CESCE:getProductId((select lpad(i.IDMODALIDAD, 3, '0') from dummy), i.IDSUBMODALIDAD, (CASE WHEN (i.IDPAIS > 0 AND i.IDPAIS <= 52) THEN 116 ELSE i.IDPAIS END), lpad(i.NUM_POLIZA , 8, '0')).productId FROM DUMMY);
+                    END IF;
 
 					IF registroExistente >= 1 THEN
-
-						UPDATE EXT.CARTERA SET
+						IF i.NUM_AVAL_FIANZA IS NULL THEN
+							UPDATE EXT.CARTERA SET
+							NUM_EXPEDIENTE = i.NUM_EXPEDIENTE,
+							NUM_AVAL_HOST = i.NUM_AVAL_HOST,
+							FECHA_EFECTO = NULL,
+							FECHA_VENCIMIENTO = NULL,
+							FECHA_EMISION = NULL,
+							IDPAIS = i.IDPAIS,
+							IDDIVISA_COBERTURA = i.IDDIVISA_COBERTURA,
+							COD_MEDIADOR = codigoMediador,
+							COD_SUBCLAVE = subclaveMediador,
+							--SMM v30 P_INTERMEDIACION = 100.0,
+							FECHA_INICIO = fechaInicio,
+							FECHA_FIN = CASE WHEN (fechaFin is null or fechaFin = '2099-12-31') THEN TO_DATE('2200-01-01','YYYY-MM-DD') ELSE fechaFin END,
+							NIF_TOMADOR = i.IDFISCAL_TOMADOR,
+							NOMBRE_TOMADOR = i.NOMBRE_TOMADOR,
+							MEDIADOR_PRINCIPAL_CIC = 1,
+							ACTIVO = 1,
+							MODIF_DATE = CURRENT_TIMESTAMP,
+							MODIF_USER = 'CDL-EXPEDIENTE',
+							MODIF_SOURCE = IN_FILENAME
+							WHERE NUM_POLIZA = i.NUM_POLIZA
+							AND COALESCE(NUM_FIANZA,-1) = COALESCE(i.NUM_AVAL_FIANZA,-1)
+							AND COD_MEDIADOR = SUBSTR_BEFORE(i.IDMEDIADOR,'-')
+							AND COD_SUBCLAVE = SUBSTR_AFTER(i.IDMEDIADOR,'-')
+							-- AND FECHA_INICIO = i.FECHA_EFECTO
+							AND COALESCE(NUM_AVAL_HOST,-1) = COALESCE(i.NUM_AVAL_HOST,-1)
+							AND ACTIVO > 0;
+						ELSE
+							UPDATE EXT.CARTERA SET
 							NUM_EXPEDIENTE = i.NUM_EXPEDIENTE,
 							NUM_AVAL_HOST = i.NUM_AVAL_HOST,
 							FECHA_EFECTO = i.FECHA_EFECTO,
@@ -611,7 +730,7 @@ BEGIN
 							IDDIVISA_COBERTURA = i.IDDIVISA_COBERTURA,
 							COD_MEDIADOR = codigoMediador,
 							COD_SUBCLAVE = subclaveMediador,
-							P_INTERMEDIACION = 100.0,
+							--SMM v30 P_INTERMEDIACION = 100.0,
 							FECHA_INICIO = fechaInicio,
 							FECHA_FIN = CASE WHEN (fechaFin is null or fechaFin = '2099-12-31') THEN TO_DATE('2200-01-01','YYYY-MM-DD') ELSE fechaFin END,
 							NIF_TOMADOR = i.IDFISCAL_TOMADOR,
@@ -621,13 +740,15 @@ BEGIN
 							MODIF_DATE = CURRENT_TIMESTAMP,
 							MODIF_USER = 'CDL',
 							MODIF_SOURCE = IN_FILENAME
-						WHERE IDPRODUCT = (SELECT EXT.LIB_GLOBAL_CESCE:getProductId((select lpad(i.IDMODALIDAD, 3, '0') from dummy), i.IDSUBMODALIDAD, (CASE WHEN (i.IDPAIS > 0 AND i.IDPAIS <= 52) THEN '116' ELSE i.IDPAIS END), lpad(i.NUM_POLIZA , 8, '0')).productId FROM DUMMY)
-						AND NUM_POLIZA = i.NUM_POLIZA
-						AND NUM_FIANZA = i.NUM_AVAL_FIANZA
-						AND COD_MEDIADOR = SUBSTR_BEFORE(i.IDMEDIADOR,'-')
-						AND COD_SUBCLAVE = SUBSTR_AFTER(i.IDMEDIADOR,'-')
-						AND FECHA_INICIO = i.FECHA_EFECTO
-						AND NUM_AVAL_HOST = i.NUM_AVAL_HOST;
+							WHERE IDPRODUCT = (SELECT EXT.LIB_GLOBAL_CESCE:getProductId((select lpad(i.IDMODALIDAD, 3, '0') from dummy), i.IDSUBMODALIDAD, (CASE WHEN (i.IDPAIS > 0 AND i.IDPAIS <= 52) THEN '116' ELSE i.IDPAIS END), lpad(i.NUM_POLIZA , 8, '0')).productId FROM DUMMY)
+							AND NUM_POLIZA = i.NUM_POLIZA
+							AND NUM_FIANZA = i.NUM_AVAL_FIANZA
+							AND COD_MEDIADOR = SUBSTR_BEFORE(i.IDMEDIADOR,'-')
+							AND COD_SUBCLAVE = SUBSTR_AFTER(i.IDMEDIADOR,'-')
+							AND FECHA_INICIO = i.FECHA_EFECTO
+							AND NUM_AVAL_HOST = i.NUM_AVAL_HOST
+							AND ACTIVO > 0;
+						END IF;
 
 						CALL LIB_GLOBAL_CESCE :w_debug (
 						i_Tenant,
@@ -654,13 +775,16 @@ BEGIN
 						WHERE NUM_POLIZA = i.NUM_POLIZA 
 						AND COD_MEDIADOR = SUBSTR_BEFORE(i.IDMEDIADOR,'-') 
 						AND COD_SUBCLAVE = SUBSTR_AFTER(i.IDMEDIADOR,'-')
-						AND IDPRODUCT = (SELECT EXT.LIB_GLOBAL_CESCE:getProductId((select lpad(i.IDMODALIDAD, 3, '0') from dummy), '0', (CASE WHEN (i.IDPAIS > 0 AND i.IDPAIS <= 52) THEN 116 ELSE i.IDPAIS END), lpad(i.NUM_POLIZA , 8, '0')).productId FROM DUMMY)
+						AND IDPRODUCT = (SELECT EXT.LIB_GLOBAL_CESCE:getProductId((select lpad(i.IDMODALIDAD, 3, '0') from dummy), i.IDSUBMODALIDAD, (CASE WHEN (i.IDPAIS > 0 AND i.IDPAIS <= 52) THEN 116 ELSE i.IDPAIS END), lpad(i.NUM_POLIZA , 8, '0')).productId FROM DUMMY)
 						ORDER BY FECHA_VENCIMIENTO DESC LIMIT  1; 
 
 
 						INSERT INTO EXT.CARTERA VALUES(
 							'CAUCION',
-							(SELECT EXT.LIB_GLOBAL_CESCE:getProductId((select lpad(i.IDMODALIDAD, 3, '0') from dummy) , i.IDSUBMODALIDAD, (CASE WHEN (i.IDPAIS > 0 AND i.IDPAIS <= 52) THEN '116' ELSE i.IDPAIS END), lpad(i.NUM_POLIZA , 8, '0')).productId FROM DUMMY),
+							CASE WHEN i.NUM_AVAL_FIANZA IS NULL 
+								THEN ''
+								ELSE (SELECT EXT.LIB_GLOBAL_CESCE:getProductId((select lpad(i.IDMODALIDAD, 3, '0') from dummy) , i.IDSUBMODALIDAD, (CASE WHEN (i.IDPAIS > 0 AND i.IDPAIS <= 52) THEN '116' ELSE i.IDPAIS END), lpad(i.NUM_POLIZA , 8, '0')).productId FROM DUMMY)
+							END,
 							i.NUM_POLIZA,
 							i.IDMODALIDAD,
 							i.IDSUBMODALIDAD,
@@ -668,32 +792,50 @@ BEGIN
 							i.NUM_EXPEDIENTE,
 							i.NUM_AVAL_HOST,
 							0,
-							i.FECHA_EFECTO, -- FECHA EMISION
-							i.FECHA_EFECTO,
-							i.FECHA_VENCIMIENTO,
+							CASE WHEN i.NUM_AVAL_FIANZA IS NULL
+								THEN NULL
+								ELSE i.FECHA_EFECTO
+							END, -- FECHA EMISION
+							CASE WHEN i.NUM_AVAL_FIANZA IS NULL
+								THEN NULL
+								ELSE i.FECHA_EFECTO
+							END,
+							CASE WHEN i.NUM_AVAL_FIANZA IS NULL
+								THEN NULL
+								ELSE i.FECHA_VENCIMIENTO
+							END,
 							i.IDPAIS,
 							NULL,
 							NULL,
 							NULL,
 							NULL,
-							i.IDDIVISA_COBERTURA,
+							CASE WHEN i.NUM_AVAL_FIANZA IS NULL
+								THEN NULL
+								ELSE i.IDDIVISA_COBERTURA
+							END,
 							NULL,
 							NULL, 
 							codigoMediador,
 							subclaveMediador,
 							100.00,
 							fechaInicio,
-							fechaFin,
+							CASE WHEN (fechaFin is null or fechaFin = '2099-12-31') THEN TO_DATE('2200-01-01','YYYY-MM-DD') ELSE fechaFin END,
 							CASE WHEN especialEmision = 0 THEN NULL ELSE especialEmision END,
 							CASE WHEN especialRenovacion = 0 THEN NULL ELSE especialRenovacion END,
 							i.IDFISCAL_TOMADOR,
 							i.NOMBRE_TOMADOR,
 							NULL,
-							1,
+							CASE WHEN i.NUM_AVAL_FIANZA IS NULL
+								THEN NULL
+								ELSE 1
+							END,
 							1,
 							CURRENT_TIMESTAMP,
 							CURRENT_TIMESTAMP,
-							'CDL',
+							CASE WHEN i.NUM_AVAL_FIANZA IS NULL
+								THEN 'CDL-EXPEDIENTE'
+								ELSE 'CDL'
+							END,
 							IN_FILENAME,
 							NULL,-- FECHA_INICIO_OPESP
 							NULL-- FECHA_FIN_OPESP
@@ -744,63 +886,134 @@ BEGIN
 				END IF;
 				-------------------------------------------------------------------------------------------------------
 
-				-- Se busca si ya existe la p�liza en Cartera
+				-- Se busca si ya existe la p�liza en CARTERA
 				IF i.IDTIPO_MOV = 3 THEN
-					-- SELECT COALESCE(COUNT(*),0) INTO registroExistente DEFAULT 0
-					SELECT CASE WHEN COUNT(*) = 0 THEN 0 ELSE COUNT(*) END INTO registroExistente DEFAULT 0
-					FROM EXT.CARTERA
-					WHERE NUM_POLIZA = i.NUM_POLIZA 
-					AND COD_MEDIADOR = SUBSTR_BEFORE(i.IDMEDIADOR,'-') 
-					AND COD_SUBCLAVE = SUBSTR_AFTER(i.IDMEDIADOR,'-')
-					AND NUM_FIANZA = i.NUM_AVAL_FIANZA
-					AND NUM_AVAL_HOST = i.NUM_AVAL_HOST
-					AND	(FECHA_EFECTO = i.FECHA_EFECTO OR fechaVencimientoAnterior = i.FECHA_VENCIMIENTO)
-					AND FECHA_INICIO = i.FECHA_EFECTO
-					AND IDPRODUCT = (SELECT EXT.LIB_GLOBAL_CESCE:getProductId( (select lpad(i.IDMODALIDAD, 3, '0') from dummy), i.IDSUBMODALIDAD, (CASE WHEN (i.IDPAIS > 0 AND i.IDPAIS <= 52) THEN '116' ELSE i.IDPAIS END), lpad(i.NUM_POLIZA , 8, '0')).productId FROM DUMMY);
+					IF i.NUM_AVAL_FIANZA IS NULL THEN
+						-- SELECT COALESCE(COUNT(*),0) INTO registroExistente DEFAULT 0
+						SELECT CASE WHEN COUNT(*) = 0 THEN 0 ELSE COUNT(*) END INTO registroExistente DEFAULT 0
+						FROM EXT.CARTERA
+						WHERE NUM_POLIZA = i.NUM_POLIZA 
+						AND COD_MEDIADOR = SUBSTR_BEFORE(i.IDMEDIADOR,'-') 
+						AND COD_SUBCLAVE = SUBSTR_AFTER(i.IDMEDIADOR,'-')
+						AND COALESCE(NUM_FIANZA,-1) = COALESCE(i.NUM_AVAL_FIANZA,-1)
+						AND COALESCE(NUM_AVAL_HOST,-1) = COALESCE(i.NUM_AVAL_HOST,-1)
+						AND FECHA_EFECTO = i.FECHA_EFECTO
+						-- AND FECHA_INICIO = i.FECHA_EFECTO
+						AND (
+    						(i.NUM_AVAL_FIANZA IS NULL AND IDPRODUCT IN ('', '0'))
+    						OR (i.NUM_AVAL_FIANZA IS NOT NULL AND IDPRODUCT = (
+        				    SELECT EXT.LIB_GLOBAL_CESCE:getProductId(LPAD(i.IDMODALIDAD, 3, '0'),i.IDSUBMODALIDAD,CASE WHEN i.IDPAIS > 0 AND i.IDPAIS <= 52 THEN '116' ELSE i.IDPAIS END, LPAD(i.NUM_POLIZA, 8, '0')).productId FROM DUMMY))
+						);
+					ELSE
+						-- SELECT COALESCE(COUNT(*),0) INTO registroExistente DEFAULT 0
+						SELECT CASE WHEN COUNT(*) = 0 THEN 0 ELSE COUNT(*) END INTO registroExistente DEFAULT 0
+						FROM EXT.CARTERA
+						WHERE NUM_POLIZA = i.NUM_POLIZA 
+						AND COD_MEDIADOR = SUBSTR_BEFORE(i.IDMEDIADOR,'-') 
+						AND COD_SUBCLAVE = SUBSTR_AFTER(i.IDMEDIADOR,'-')
+						AND NUM_FIANZA = i.NUM_AVAL_FIANZA
+						AND NUM_AVAL_HOST = i.NUM_AVAL_HOST
+						AND	(FECHA_EFECTO = i.FECHA_EFECTO OR fechaVencimientoAnterior = i.FECHA_VENCIMIENTO)
+						AND FECHA_INICIO = i.FECHA_EFECTO
+						AND IDPRODUCT = (SELECT EXT.LIB_GLOBAL_CESCE:getProductId( (select lpad(i.IDMODALIDAD, 3, '0') from dummy), i.IDSUBMODALIDAD, (CASE WHEN (i.IDPAIS > 0 AND i.IDPAIS <= 52) THEN '116' ELSE i.IDPAIS END), lpad(i.NUM_POLIZA , 8, '0')).productId FROM DUMMY);
+					END IF;
 				ELSE
 					-- SELECT COALESCE(COUNT(*),0) INTO registroExistente DEFAULT 0
-					SELECT CASE WHEN COUNT(*) = 0 THEN 0 ELSE COUNT(*) END INTO registroExistente DEFAULT 0
-					FROM EXT.CARTERA
-					WHERE NUM_POLIZA = i.NUM_POLIZA 
-					AND COD_MEDIADOR = SUBSTR_BEFORE(i.IDMEDIADOR,'-')
-					AND COD_SUBCLAVE = SUBSTR_AFTER(i.IDMEDIADOR,'-')
-					AND NUM_FIANZA = i.NUM_AVAL_FIANZA
-					AND NUM_AVAL_HOST = i.NUM_AVAL_HOST
-					AND FECHA_EFECTO = i.FECHA_EFECTO
-					AND FECHA_INICIO = fechaInicio
-					AND IDPRODUCT = (SELECT EXT.LIB_GLOBAL_CESCE:getProductId( (select lpad(i.IDMODALIDAD, 3, '0') from dummy), i.IDSUBMODALIDAD, (CASE WHEN (i.IDPAIS > 0 AND i.IDPAIS <= 52) THEN '116' ELSE i.IDPAIS END), lpad(i.NUM_POLIZA , 8, '0')).productId FROM DUMMY);
+					
+					IF i.NUM_AVAL_FIANZA IS NULL THEN
+					
+						SELECT CASE WHEN COUNT(*) = 0 THEN 0 ELSE COUNT(*) END INTO registroExistente DEFAULT 0
+						FROM EXT.CARTERA
+						WHERE NUM_POLIZA = i.NUM_POLIZA 
+						AND COD_MEDIADOR = SUBSTR_BEFORE(i.IDMEDIADOR,'-')
+						AND COD_SUBCLAVE = SUBSTR_AFTER(i.IDMEDIADOR,'-')
+						AND COALESCE(NUM_FIANZA,-1) = COALESCE(i.NUM_AVAL_FIANZA,-1)
+						AND COALESCE(NUM_AVAL_HOST,-1) = COALESCE(i.NUM_AVAL_HOST,-1)
+						--v28: SMM 20260205
+						-- AND FECHA_EFECTO = i.FECHA_EFECTO
+						AND (
+    						(i.NUM_AVAL_FIANZA IS NULL AND IDPRODUCT IN ('', '0'))
+    						OR (i.NUM_AVAL_FIANZA IS NOT NULL AND IDPRODUCT = (
+        				    SELECT EXT.LIB_GLOBAL_CESCE:getProductId(LPAD(i.IDMODALIDAD, 3, '0'),i.IDSUBMODALIDAD,CASE WHEN i.IDPAIS > 0 AND i.IDPAIS <= 52 THEN '116' ELSE i.IDPAIS END, LPAD(i.NUM_POLIZA, 8, '0')).productId FROM DUMMY))
+						)
+						;
+					
+					ELSE
+						SELECT CASE WHEN COUNT(*) = 0 THEN 0 ELSE COUNT(*) END INTO registroExistente DEFAULT 0
+						FROM EXT.CARTERA
+						WHERE NUM_POLIZA = i.NUM_POLIZA 
+						AND COD_MEDIADOR = SUBSTR_BEFORE(i.IDMEDIADOR,'-')
+						AND COD_SUBCLAVE = SUBSTR_AFTER(i.IDMEDIADOR,'-')
+						AND NUM_FIANZA = i.NUM_AVAL_FIANZA
+						AND NUM_AVAL_HOST = i.NUM_AVAL_HOST
+						AND FECHA_EFECTO = i.FECHA_EFECTO
+						AND FECHA_INICIO = fechaInicio
+						AND IDPRODUCT = (SELECT EXT.LIB_GLOBAL_CESCE:getProductId( (select lpad(i.IDMODALIDAD, 3, '0') from dummy), i.IDSUBMODALIDAD, (CASE WHEN (i.IDPAIS > 0 AND i.IDPAIS <= 52) THEN '116' ELSE i.IDPAIS END), lpad(i.NUM_POLIZA , 8, '0')).productId FROM DUMMY);
+					END IF;
+					
+					
 				END IF;
 				-------------------------------------------------------------------------------------------------------
-
+			
 				IF registroExistente >= 1 THEN
-
-					UPDATE EXT.CARTERA SET
-						NUM_EXPEDIENTE = i.NUM_EXPEDIENTE,
-						NUM_AVAL_HOST = i.NUM_AVAL_HOST,
-						FECHA_EFECTO = i.FECHA_EFECTO,
-						FECHA_VENCIMIENTO = i.FECHA_VENCIMIENTO,
-						FECHA_EMISION = i.FECHA_EFECTO,
-						IDPAIS = i.IDPAIS,
-						IDDIVISA_COBERTURA = i.IDDIVISA_COBERTURA,
-						COD_MEDIADOR = codigoMediador,
-						COD_SUBCLAVE = subclaveMediador,
-						P_INTERMEDIACION = 100.0,
-						FECHA_INICIO = fechaInicio,
-						FECHA_FIN = CASE WHEN (fechaFin is null or fechaFin = '2099-12-31') THEN TO_DATE('2200-01-01','YYYY-MM-DD') ELSE fechaFin END,
-						NIF_TOMADOR = i.IDFISCAL_TOMADOR,
-						NOMBRE_TOMADOR = i.NOMBRE_TOMADOR,
-						MEDIADOR_PRINCIPAL_CIC = 1,
-						ACTIVO = 1,
-						MODIF_DATE = CURRENT_TIMESTAMP,
-						MODIF_USER = 'CDL',
-						MODIF_SOURCE = IN_FILENAME
-					WHERE IDPRODUCT = (SELECT EXT.LIB_GLOBAL_CESCE:getProductId((select lpad(i.IDMODALIDAD, 3, '0') from dummy), i.IDSUBMODALIDAD, (CASE WHEN (i.IDPAIS > 0 AND i.IDPAIS <= 52) THEN '116' ELSE i.IDPAIS END), lpad(i.NUM_POLIZA , 8, '0')).productId FROM DUMMY)
-					AND NUM_POLIZA = i.NUM_POLIZA
-					AND NUM_FIANZA = i.NUM_AVAL_FIANZA
-					AND COD_MEDIADOR = SUBSTR_BEFORE(i.IDMEDIADOR,'-')
-					AND COD_SUBCLAVE = SUBSTR_AFTER(i.IDMEDIADOR,'-')
-					AND FECHA_INICIO = i.FECHA_EFECTO
-					AND NUM_AVAL_HOST = i.NUM_AVAL_HOST;
+					IF i.NUM_AVAL_FIANZA IS NULL THEN
+						UPDATE EXT.CARTERA SET
+							NUM_EXPEDIENTE = i.NUM_EXPEDIENTE,
+							NUM_AVAL_HOST = i.NUM_AVAL_HOST,
+							FECHA_EFECTO = NULL,--i.FECHA_EFECTO,
+							FECHA_VENCIMIENTO = NULL,--i.FECHA_VENCIMIENTO,
+							FECHA_EMISION = NULL,--i.FECHA_EFECTO,
+							IDPAIS = i.IDPAIS,
+							IDDIVISA_COBERTURA = i.IDDIVISA_COBERTURA,
+							COD_MEDIADOR = codigoMediador,
+							COD_SUBCLAVE = subclaveMediador,
+							--SMM v30 P_INTERMEDIACION = 100.0,
+							FECHA_INICIO = fechaInicio,
+							FECHA_FIN = CASE WHEN (fechaFin is null or fechaFin = '2099-12-31') THEN TO_DATE('2200-01-01','YYYY-MM-DD') ELSE fechaFin END,
+							NIF_TOMADOR = i.IDFISCAL_TOMADOR,
+							NOMBRE_TOMADOR = i.NOMBRE_TOMADOR,
+							MEDIADOR_PRINCIPAL_CIC = 1,
+							ACTIVO = 1,
+							MODIF_DATE = CURRENT_TIMESTAMP,
+							MODIF_USER = 'CDL-EXPEDIENTE',
+							MODIF_SOURCE = IN_FILENAME
+						WHERE NUM_POLIZA = i.NUM_POLIZA
+						AND COALESCE(NUM_FIANZA,-1) = COALESCE(i.NUM_AVAL_FIANZA,-1)
+						AND COD_MEDIADOR = SUBSTR_BEFORE(i.IDMEDIADOR,'-')
+						AND COD_SUBCLAVE = SUBSTR_AFTER(i.IDMEDIADOR,'-')
+						-- AND FECHA_INICIO = i.FECHA_EFECTO
+						AND COALESCE(NUM_AVAL_HOST,-1) = COALESCE(i.NUM_AVAL_HOST,-1)
+						AND ACTIVO > 0;
+					ELSE
+						UPDATE EXT.CARTERA SET
+							NUM_EXPEDIENTE = i.NUM_EXPEDIENTE,
+							NUM_AVAL_HOST = i.NUM_AVAL_HOST,
+							FECHA_EFECTO = i.FECHA_EFECTO,
+							FECHA_VENCIMIENTO = i.FECHA_VENCIMIENTO,
+							FECHA_EMISION = i.FECHA_EFECTO,
+							IDPAIS = i.IDPAIS,
+							IDDIVISA_COBERTURA = i.IDDIVISA_COBERTURA,
+							COD_MEDIADOR = codigoMediador,
+							COD_SUBCLAVE = subclaveMediador,
+							--SMM v30 P_INTERMEDIACION = 100.0,
+							FECHA_INICIO = fechaInicio,
+							FECHA_FIN = CASE WHEN (fechaFin is null or fechaFin = '2099-12-31') THEN TO_DATE('2200-01-01','YYYY-MM-DD') ELSE fechaFin END,
+							NIF_TOMADOR = i.IDFISCAL_TOMADOR,
+							NOMBRE_TOMADOR = i.NOMBRE_TOMADOR,
+							MEDIADOR_PRINCIPAL_CIC = 1,
+							ACTIVO = 1,
+							MODIF_DATE = CURRENT_TIMESTAMP,
+							MODIF_USER = 'CDL',
+							MODIF_SOURCE = IN_FILENAME
+						WHERE IDPRODUCT = (SELECT EXT.LIB_GLOBAL_CESCE:getProductId((select lpad(i.IDMODALIDAD, 3, '0') from dummy), i.IDSUBMODALIDAD, (CASE WHEN (i.IDPAIS > 0 AND i.IDPAIS <= 52) THEN '116' ELSE i.IDPAIS END), lpad(i.NUM_POLIZA , 8, '0')).productId FROM DUMMY)
+						AND NUM_POLIZA = i.NUM_POLIZA
+						AND NUM_FIANZA = i.NUM_AVAL_FIANZA
+						AND COD_MEDIADOR = SUBSTR_BEFORE(i.IDMEDIADOR,'-')
+						AND COD_SUBCLAVE = SUBSTR_AFTER(i.IDMEDIADOR,'-')
+						AND FECHA_INICIO = i.FECHA_EFECTO
+						AND NUM_AVAL_HOST = i.NUM_AVAL_HOST
+						AND ACTIVO > 0;
+					END IF;
 
 					CALL LIB_GLOBAL_CESCE :w_debug (
 					i_Tenant,
@@ -827,13 +1040,16 @@ BEGIN
 					WHERE NUM_POLIZA = i.NUM_POLIZA 
 					AND COD_MEDIADOR = SUBSTR_BEFORE(i.IDMEDIADOR,'-') 
 					AND COD_SUBCLAVE = SUBSTR_AFTER(i.IDMEDIADOR,'-')
-					AND IDPRODUCT = (SELECT EXT.LIB_GLOBAL_CESCE:getProductId((select lpad(i.IDMODALIDAD, 3, '0') from dummy), '0', (CASE WHEN (i.IDPAIS > 0 AND i.IDPAIS <= 52) THEN 116 ELSE i.IDPAIS END), lpad(i.NUM_POLIZA , 8, '0')).productId FROM DUMMY)
+					AND IDPRODUCT = (SELECT EXT.LIB_GLOBAL_CESCE:getProductId((select lpad(i.IDMODALIDAD, 3, '0') from dummy), i.IDSUBMODALIDAD, (CASE WHEN (i.IDPAIS > 0 AND i.IDPAIS <= 52) THEN 116 ELSE i.IDPAIS END), lpad(i.NUM_POLIZA , 8, '0')).productId FROM DUMMY)
 					ORDER BY FECHA_VENCIMIENTO DESC LIMIT  1; 
 
 
 					INSERT INTO EXT.CARTERA VALUES(
 						'CAUCION',
-						(SELECT EXT.LIB_GLOBAL_CESCE:getProductId((select lpad(i.IDMODALIDAD, 3, '0') from dummy) , i.IDSUBMODALIDAD, (CASE WHEN (i.IDPAIS > 0 AND i.IDPAIS <= 52) THEN '116' ELSE i.IDPAIS END), lpad(i.NUM_POLIZA , 8, '0')).productId FROM DUMMY),
+						CASE WHEN i.NUM_AVAL_FIANZA IS NULL 
+							THEN ''
+							ELSE (SELECT EXT.LIB_GLOBAL_CESCE:getProductId((select lpad(i.IDMODALIDAD, 3, '0') from dummy) , i.IDSUBMODALIDAD, (CASE WHEN (i.IDPAIS > 0 AND i.IDPAIS <= 52) THEN '116' ELSE i.IDPAIS END), lpad(i.NUM_POLIZA , 8, '0')).productId FROM DUMMY)
+							END,
 						i.NUM_POLIZA,
 						i.IDMODALIDAD,
 						i.IDSUBMODALIDAD,
@@ -841,32 +1057,50 @@ BEGIN
 						i.NUM_EXPEDIENTE,
 						i.NUM_AVAL_HOST,
 						0,
-						i.FECHA_EFECTO, -- FECHA EMISION
-						i.FECHA_EFECTO,
-						i.FECHA_VENCIMIENTO,
+						CASE WHEN i.NUM_AVAL_FIANZA IS NULL
+							THEN NULL
+							ELSE i.FECHA_EFECTO
+						END, -- FECHA EMISION
+						CASE WHEN i.NUM_AVAL_FIANZA IS NULL
+							THEN NULL
+							ELSE i.FECHA_EFECTO
+						END,
+						CASE WHEN i.NUM_AVAL_FIANZA IS NULL
+							THEN NULL
+							ELSE i.FECHA_VENCIMIENTO
+						END,
 						i.IDPAIS,
 						NULL,
 						NULL,
 						NULL,
 						NULL,
-						i.IDDIVISA_COBERTURA,
+						CASE WHEN i.NUM_AVAL_FIANZA IS NULL
+							THEN NULL
+							ELSE i.IDDIVISA_COBERTURA
+						END,
 						NULL,
 						NULL, 
 						CASE WHEN i.IDTIPO_MOV = 2 THEN codigoMediador ELSE SUBSTR_BEFORE(i.IDMEDIADOR,'-') END,
 						CASE WHEN i.IDTIPO_MOV = 2 THEN subclaveMediador ELSE SUBSTR_AFTER(i.IDMEDIADOR,'-') END,
 						100.00,
-						CASE WHEN i.IDTIPO_MOV = 2 THEN fechaInicio ELSE i.FECHA_EFECTO END,
+						CASE WHEN i.IDTIPO_MOV = 2 THEN COALESCE(fechaInicio,'1990-12-31') ELSE i.FECHA_EFECTO END,
 						CASE WHEN i.IDTIPO_MOV = 2 THEN fechaFin ELSE (CASE WHEN i.FECHA_VENCIMIENTO is null or i.FECHA_VENCIMIENTO = '2099-12-31' then TO_DATE('2200-01-01','YYYY-MM-DD') else i.FECHA_VENCIMIENTO END) END,
 						CASE WHEN especialEmision = 0 THEN NULL ELSE especialEmision END,
 						CASE WHEN especialRenovacion = 0 THEN NULL ELSE especialRenovacion END,
 						i.IDFISCAL_TOMADOR,
 						i.NOMBRE_TOMADOR,
 						NULL,
-						1,
+						CASE WHEN i.NUM_AVAL_FIANZA IS NULL
+							THEN NULL
+							ELSE 1
+						END,
 						1,
 						CURRENT_TIMESTAMP,
 						CURRENT_TIMESTAMP,
-						'CDL',
+						CASE WHEN i.NUM_AVAL_FIANZA IS NULL
+							THEN 'CDL-EXPEDIENTE'
+							ELSE 'CDL'
+						END,
 						IN_FILENAME,
 						NULL,-- FECHA_INICIO_OPESP
 						NULL-- FECHA_FIN_OPESP
@@ -883,6 +1117,7 @@ BEGIN
 
 				END IF;
 			END IF;
+		
 		END FOR;
 
 		CLOSE mvfid_hist;
@@ -898,6 +1133,8 @@ BEGIN
 
 	--Creación de expedientes
 	--CALL EXT.SP_CREAR_EXPEDIENTE();
+	
+	CALL EXT.SP_CORREGIR_POLIZAS(IN_FILENAME);
 
 	CALL LIB_GLOBAL_CESCE :w_debug (
     i_Tenant,
