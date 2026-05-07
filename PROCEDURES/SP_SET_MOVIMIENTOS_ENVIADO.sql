@@ -7,7 +7,7 @@ BEGIN
 	-- v08: En CARTERA, se inserta activo a 0 si las fechas de inicio y fin no son correctas.
 	-- v09: Se ha modificado el flujo para tener en cuenta el tipo de movimiento.
 	-- v10: Se ha cambiado la comprobación de los registros duplicados para que detecte los de tipo de movimiento 2
-	-- v11: Se añaden los nombre de campos de EXT_MOVIMIENTO_CARTERA_CREDITO_HIST para pbtener el COD_MEDIADOR y SUBCLAVE formateado a 4 digitos
+	-- v11: Se añaden los nombre de campos de EXT_MOVIMIENTO_CARTERA_CREDITO_HIST_BKP_SMM para pbtener el COD_MEDIADOR y SUBCLAVE formateado a 4 digitos
 	-- v12: Modificado el comportamiento cuando se reciben movimientos de tipo 2 para que contemple los casos en que una póliza es intermediada por múltiples mediadores.
 	-- v13: Cambios en movimientos tipo 2 para que tenga en cuenta múltiples mediadores en una misma póliza
 	-- v14: Si hay múltiples mediadores de traspaso se actualiza el registro con el nuevo mediador 
@@ -33,9 +33,10 @@ BEGIN
     -- v30: SMM 20260316 Cambio % intermediación. 
 	--				    	Insert: cogemos lo que venga en el fichero. 
 	--				    	Update: manda SAP Commisions (se queda como está)
+	-- v31: SMM 20260505 Corrección duplicados
 	-------------------------------------------------------------------------
 
-	DECLARE cVersion CONSTANT VARCHAR(2) := '30';
+	DECLARE cVersion CONSTANT VARCHAR(2) := '31';
 	DECLARE i_Tenant VARCHAR2(127);
 	DECLARE vProcedure VARCHAR2(127);
 	DECLARE io_contador  INTEGER := 0;
@@ -73,7 +74,7 @@ BEGIN
     WHERE ESTADOREG = 'PENDIENTE';
 
 	DECLARE CURSOR mvfid_hist FOR
-	SELECT * FROM EXT.EXT_MOVIMIENTO_FIANZAS_CAUCION_HIST
+	SELECT * FROM EXT.EXT_MOVIMIENTO_FIANZAS_CAUCION_HIST_BKP_SMM
 	WHERE ESTADOREG = 'PENDIENTE';
 
 ----------------------------- HANDLER EXCEPTION -------------------------
@@ -142,7 +143,7 @@ BEGIN
 				AND ACTIVO = CASE WHEN :mediadoresTraspaso > 0 THEN 2 ELSE 1 END
 				AND NUM_ANUALIDAD = anualidad;
 
-
+-- SELECT registrosRenovacion FROM DUMMY;
 				-- Se inserta o actualiza el registro de la renovación para cada mediador
 				FOR contador IN 0..(registrosRenovacion-1) DO
 
@@ -178,7 +179,6 @@ BEGIN
 					OFFSET :contador;
 					-------------------------------------------------------------------------------------------------------
 
-
                     -- SELECT COALESCE(COUNT(*),0) INTO registroExistente DEFAULT 0
                     SELECT CASE WHEN COUNT(*) = 0 THEN 0 ELSE COUNT(*) END INTO registroExistente DEFAULT 1
                     FROM EXT.CARTERA
@@ -188,6 +188,7 @@ BEGIN
                     AND NUM_ANUALIDAD = CASE WHEN ACTIVO = 2 THEN anualidad ELSE i.NUM_ANUALIDAD END
                     AND IDPRODUCT = (SELECT EXT.LIB_GLOBAL_CESCE:getProductId((select lpad(i.IDMODALIDAD, 3, '0') from dummy), '0', (CASE WHEN (i.IDPAIS > 0 AND i.IDPAIS <= 52) THEN 116 ELSE i.IDPAIS END), lpad(i.NUM_POLIZA , 8, '0')).productId FROM DUMMY);
 
+-- SELECT codigoMediador, subclaveMediador,registroExistente,mediadoresTraspaso FROM DUMMY;
 
 					IF registroExistente >= 1 THEN --UPDATE
 						-- v14
@@ -238,8 +239,8 @@ BEGIN
 								IDDIVISA_EXT = i.IDDIVISA_MERCADO_EXT,
 								PRIMA_MIN_INT = i.PRIMA_MIN_MERCADO_INT,
 								PRIMA_MIN_EXT = i.PRIMA_MIN_MERCADO_EXT,
-								COD_MEDIADOR = codigoMediador,
-								COD_SUBCLAVE = subclaveMediador,
+								-- COD_MEDIADOR = codigoMediador,
+								-- COD_SUBCLAVE = subclaveMediador,
 								--SMM v30 P_INTERMEDIACION = 100 * i.PORC_INTERMEDIACION,
 								--FECHA_INICIO = i.FECHA_INI,
 								FECHA_INICIO = fechaInicio,
@@ -250,7 +251,7 @@ BEGIN
 								MEDIADOR_PRINCIPAL_CIC = 1,
 								ACTIVO = 1,
 								MODIF_DATE = CURRENT_TIMESTAMP,
-								MODIF_USER = 'CDL',
+								MODIF_USER = 'CDL'||codigoMediador||'-'||i.IDMEDIADOR,
 								MODIF_SOURCE = IN_FILENAME
 							WHERE NUM_POLIZA = i.NUM_POLIZA 
 							AND COD_MEDIADOR = i.IDMEDIADOR 
@@ -265,7 +266,8 @@ BEGIN
 
 						CALL LIB_GLOBAL_CESCE :w_debug (
 						i_Tenant,
-						'Update línea '|| TO_VARCHAR (numLin) || ' registros actualizados '  || To_VARCHAR(::ROWCOUNT) || ' NUM_POLIZA:' || COALESCE(i.NUM_POLIZA,0) || ',IDMODALIDAD:' || COALESCE(i.IDMODALIDAD, 0) || ',IDMEDIADOR:' || COALESCE (i.IDMEDIADOR, '0') ||
+						'Update línea '|| TO_VARCHAR (numLin) || ' registros actualizados '  || To_VARCHAR(::ROWCOUNT) || ' NUM_POLIZA:' || COALESCE(i.NUM_POLIZA,0) || 
+						',IDMODALIDAD:' || COALESCE(i.IDMODALIDAD, 0) || ',IDMEDIADOR:' || COALESCE (i.IDMEDIADOR, '0') ||
 						',IDSUBCLAVE:' || COALESCE (i.IDSUBCLAVE, '0') || ',FECHA_INI:' || COALESCE (i.FECHA_INI, '0') || 
 						',FECHA_FIN' || COALESCE (i.FECHA_FIN, '0') || ',TIPO_MOV:' || COALESCE (i.IDTIPO_MOV, 0),
 						vProcedure,
@@ -337,8 +339,9 @@ BEGIN
 
 						CALL LIB_GLOBAL_CESCE :w_debug (
 						i_Tenant,
-						'Insert línea '|| TO_VARCHAR (numLin) || ' registros insertados '  || To_VARCHAR(::ROWCOUNT) || ' NUM_POLIZA:' || COALESCE(i.NUM_POLIZA, 0) || ',IDMODALIDAD:' || COALESCE(i.IDMODALIDAD, 0) || ',IDMEDIADOR:' || COALESCE (i.IDMEDIADOR, '0') ||
-						',IDSUBCLAVE:' || COALESCE (i.IDSUBCLAVE, '0') || ',FECHA_INI:' || COALESCE (i.FECHA_INI, '0') || 
+						'Insert línea '|| TO_VARCHAR (numLin) || ' registros insertados '  || To_VARCHAR(::ROWCOUNT) || ' NUM_POLIZA:' || COALESCE(i.NUM_POLIZA, 0) || 
+						',IDMODALIDAD:' || COALESCE(i.IDMODALIDAD, 0) || ',IDMEDIADOR:' || COALESCE (codigoMediador, '0') ||
+						',IDSUBCLAVE:' || COALESCE (subclaveMediador, '0') || ',FECHA_INI:' || COALESCE (i.FECHA_INI, '0') || 
 						',FECHA_FIN' || COALESCE (i.FECHA_FIN, '0') || ',TIPO_MOV:' || COALESCE (i.IDTIPO_MOV, 0),
 						vProcedure,
 						io_contador
@@ -409,7 +412,7 @@ BEGIN
 					WHERE NUM_POLIZA = i.NUM_POLIZA 
 					AND COD_MEDIADOR = i.IDMEDIADOR 
 					AND COD_SUBCLAVE = i.IDSUBCLAVE
-					AND (FECHA_EFECTO = i.FECHA_EFECTO OR fechaVencimientoAnterior = i.FECHA_VENCIMIENTO)
+					--SMM 20260505 AND (FECHA_EFECTO = i.FECHA_EFECTO OR fechaVencimientoAnterior = i.FECHA_VENCIMIENTO)
 					--SMM 20261702 AND FECHA_INICIO = fechaInicio
 					AND NUM_ANUALIDAD = i.NUM_ANUALIDAD
 					AND IDPRODUCT = (SELECT EXT.LIB_GLOBAL_CESCE:getProductId((select lpad(i.IDMODALIDAD, 3, '0') from dummy), '0', (CASE WHEN (i.IDPAIS > 0 AND i.IDPAIS <= 52) THEN 116 ELSE i.IDPAIS END), lpad(i.NUM_POLIZA , 8, '0')).productId FROM DUMMY);
@@ -638,7 +641,8 @@ BEGIN
 						AND IDPRODUCT = (SELECT EXT.LIB_GLOBAL_CESCE:getProductId((select lpad(i.IDMODALIDAD, 3, '0') from dummy), i.IDSUBMODALIDAD, (CASE WHEN (i.IDPAIS > 0 AND i.IDPAIS <= 52) THEN 116 ELSE i.IDPAIS END), lpad(i.NUM_POLIZA , 8, '0')).productId FROM DUMMY)
 						AND ACTIVO = CASE WHEN :mediadoresTraspaso > 0 THEN 2 ELSE 1 END
 						AND FECHA_EFECTO = i.FECHA_EFECTO
-						AND FECHA_INICIO = fechaInicio;
+						AND FECHA_INICIO = fechaInicio
+						;
 				
                 END IF;
 				
@@ -685,8 +689,8 @@ BEGIN
                     	AND COD_SUBCLAVE = subclaveMediador
 						AND NUM_FIANZA = i.NUM_AVAL_FIANZA
 						AND NUM_AVAL_HOST = i.NUM_AVAL_HOST
-						AND FECHA_EFECTO = i.FECHA_EFECTO
-						AND FECHA_INICIO = fechaInicio
+						--V31 AND FECHA_EFECTO = i.FECHA_EFECTO
+						--V31 AND FECHA_INICIO = fechaInicio
                     	AND IDPRODUCT = (SELECT EXT.LIB_GLOBAL_CESCE:getProductId((select lpad(i.IDMODALIDAD, 3, '0') from dummy), i.IDSUBMODALIDAD, (CASE WHEN (i.IDPAIS > 0 AND i.IDPAIS <= 52) THEN 116 ELSE i.IDPAIS END), lpad(i.NUM_POLIZA , 8, '0')).productId FROM DUMMY);
                     END IF;
 
@@ -1122,7 +1126,7 @@ BEGIN
 
 		CLOSE mvfid_hist;
 
-		UPDATE EXT.EXT_MOVIMIENTO_FIANZAS_CAUCION_HIST SET ESTADOREG = 'ENVIADO'
+		UPDATE EXT.EXT_MOVIMIENTO_FIANZAS_CAUCION_HIST_BKP_SMM SET ESTADOREG = 'ENVIADO'
 		WHERE ESTADOREG = 'PENDIENTE';
 
     	COMMIT;
