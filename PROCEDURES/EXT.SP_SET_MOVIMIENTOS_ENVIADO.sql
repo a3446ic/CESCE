@@ -33,9 +33,10 @@ BEGIN
     -- v30: SMM 20260316 Cambio % intermediación. 
 	--				    	Insert: cogemos lo que venga en el fichero. 
 	--				    	Update: manda SAP Commisions (se queda como está)
+	-- v32: AGE 20260702 Comprobar que fecha efecto no sea mayor a fecha fin en mvcar_hist
 	-------------------------------------------------------------------------
 
-	DECLARE cVersion CONSTANT VARCHAR(2) := '30';
+	DECLARE cVersion CONSTANT VARCHAR(2) := '32';
 	DECLARE i_Tenant VARCHAR2(127);
 	DECLARE vProcedure VARCHAR2(127);
 	DECLARE io_contador  INTEGER := 0;
@@ -70,7 +71,8 @@ BEGIN
 	IND_FIRMA_DIGITAL,IDAGENTE,FECHA_INI,FECHA_FIN,DESC_SUBCLAVE,LPAD(IDSUBCLAVE, 4, '0') as IDSUBCLAVE, PORC_INTERMEDIACION,
 	IDTIPO_MOV,BATCHNAME,CREATEDATE,ESTADOREG,IDPAIS 
 	FROM EXT.EXT_MOVIMIENTO_CARTERA_CREDITO_HIST
-    WHERE ESTADOREG = 'PENDIENTE';
+    WHERE ESTADOREG = 'PENDIENTE'
+	AND FECHA_EFECTO < FECHA_FIN;
 
 	DECLARE CURSOR mvfid_hist FOR
 	SELECT * FROM EXT.EXT_MOVIMIENTO_FIANZAS_CAUCION_HIST
